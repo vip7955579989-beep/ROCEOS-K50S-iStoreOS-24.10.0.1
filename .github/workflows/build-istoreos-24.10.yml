@@ -72,7 +72,7 @@ jobs:
         # 1. 注入默认后台管理 IP: 192.168.100.1
         sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_generate
 
-        # 2. 创建所有内核与目标平台检索路径（核心：加入 files/arch/arm64/boot/dts/rockchip）
+        # 2. 注入 DTS 到内核构建源码与 target 检索树
         mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
         mkdir -p target/linux/rockchip/dts/rockchip
         mkdir -p target/linux/rockchip/dts/rk3568
@@ -82,18 +82,17 @@ jobs:
           cp -f $SRC_DIR/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
           cp -f $SRC_DIR/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
         else
-          # 拉取原厂 DTS 并注入到 OpenWrt 内核覆盖目录
           curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts" -o target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts
           curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi" -o target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi
         fi
 
-        # 同步备份至 target dts 备查路径
+        # 同步备份至所有可能索检的 dts 目录
         cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/
         cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/
         cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/
         cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/
 
-        # 3. 在 armv8.mk 中注册 ROCEOS K50S 编译设备
+        # 3. 在 armv8.mk 中定义 ROCEOS K50S
         if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
         cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
 
@@ -109,7 +108,7 @@ jobs:
         EOF
         fi
 
-        # 4. 配置 02_network 精准锁定网口物理拓扑与映射
+        # 4. 配置网卡拓扑与接口绑定
         NETWORK_FILE="target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
         if [ -f "$NETWORK_FILE" ] && ! grep -q "roceos,k50s" "$NETWORK_FILE"; then
             sed -i '/rockchip_setup_interfaces()/a \
@@ -122,7 +121,7 @@ jobs:
         ' "$NETWORK_FILE"
         fi
 
-        # 5. 生成核心编译配置文件 .config
+        # 5. 生成配置文件
         cat << 'EOF' > .config
         CONFIG_TARGET_rockchip=y
         CONFIG_TARGET_rockchip_armv8=y
@@ -159,12 +158,34 @@ jobs:
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
+    - name: Pre-build Kernel Prepare & Sync DTS
+      run: |
+        cd openwrt
+        # 预先触发内核准备，直接将 DTS 注入并注册到 Linux 6.6 内核树的 Makefile
+        make target/linux/prepare -j$(nproc) || true
+        for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
+          if [ -d "$dts_dir" ]; then
+            cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
+            if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
+              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
+            fi
+          fi
+        done
+
     - name: Compile Firmware
       id: compile
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        # 确保 DTS 在最终镜像生成阶段常驻
+        make -j$(nproc) || {
+          for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
+            if [ -d "$dts_dir" ]; then
+              cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
+            fi
+          done
+          make -j1 V=s
+        }
         echo "status=success" >> $GITHUB_OUTPUT
         SOURCE_DATE=$(date +%Y%m%d)
         echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
