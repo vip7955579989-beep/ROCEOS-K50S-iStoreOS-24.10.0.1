@@ -35,12 +35,12 @@ TARGET_DEVICES += roceos_k50s
 DEVICE_EOF
 fi
 
-# 4. 配置网口映射 (自动递归查找 02_network，确保兼容性并正确分配 LAN/WAN)
+# 4. 配置 5 网口映射 (LAN: 3x 2.5G 电口 eth0~eth2; WAN: 2x 千兆复用口 eth3~eth4)
 for netfile in $(find target/linux/rockchip -name "02_network"); do
   if [ -f "$netfile" ] && ! grep -q "roceos,k50s" "$netfile"; then
     sed -i '/case "\$board" in/a\
 roceos,k50s)\
-	ucidef_set_interfaces_lan_wan "eth1" "eth0"\
+	ucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3 eth4"\
 	;;' "$netfile" 2>/dev/null || true
   fi
 done
