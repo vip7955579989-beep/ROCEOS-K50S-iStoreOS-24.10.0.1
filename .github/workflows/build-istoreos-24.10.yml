@@ -43,7 +43,7 @@ jobs:
         sudo -E apt-get -qq install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
           gettext git libncurses5-dev libssl-dev python3-distutils python3-pyelftools python3-setuptools python3-pip \
           rsync unzip zlib1g-dev file msmtp texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake \
-          libtool sed subversion patch lib32gcc-s1 libc6-dev-i386 device-tree-compiler swig bc
+          libtool sed subversion patch lib32gcc-s1 libc6-dev-i386 device-tree-compiler
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
@@ -72,74 +72,84 @@ jobs:
         # 1. 注入默认后台管理 IP: 192.168.100.1
         sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_generate
 
-        # 2. 注入设备树（优先使用仓库 patches/ 目录中针对 6.6 内核适配的 DTS）
+        # 2. 创建所有内核与目标平台检索路径（核心：加入 files/arch/arm64/boot/dts/rockchip）
+        mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
         mkdir -p target/linux/rockchip/dts/rockchip
         mkdir -p target/linux/rockchip/dts/rk3568
+
         if [ -d "$GITHUB_WORKSPACE/patches" ] && [ -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts" ]; then
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi
+          SRC_DIR="$GITHUB_WORKSPACE/patches"
+          cp -f $SRC_DIR/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
+          cp -f $SRC_DIR/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
         else
-          # 后备方案：若未放置 patches，拉取 22.03 原厂 DTS
-          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts" -o target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts
-          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi" -o target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi
-          cp -f target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts
-          cp -f target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi
+          # 拉取原厂 DTS 并注入到 OpenWrt 内核覆盖目录
+          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts" -o target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts
+          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi" -o target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi
         fi
+
+        # 同步备份至 target dts 备查路径
+        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/
+        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/
+        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/
+        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/
 
         # 3. 在 armv8.mk 中注册 ROCEOS K50S 编译设备
         if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
-          echo "" >> target/linux/rockchip/image/armv8.mk
-          echo "define Device/roceos_k50s" >> target/linux/rockchip/image/armv8.mk
-          echo "  DEVICE_VENDOR := ROCEOS" >> target/linux/rockchip/image/armv8.mk
-          echo "  DEVICE_MODEL := K50S" >> target/linux/rockchip/image/armv8.mk
-          echo "  SOC := rk3568" >> target/linux/rockchip/image/armv8.mk
-          echo "  DEVICE_DTS := rockchip/rk3568-roc-k50s" >> target/linux/rockchip/image/armv8.mk
-          echo "  UBOOT_DEVICE_NAME := nanopi-r5s-rk3568" >> target/linux/rockchip/image/armv8.mk
-          echo "  DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455-sdio" >> target/linux/rockchip/image/armv8.mk
-          echo "endef" >> target/linux/rockchip/image/armv8.mk
-          echo "TARGET_DEVICES += roceos_k50s" >> target/linux/rockchip/image/armv8.mk
+        cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
+
+        define Device/roceos_k50s
+          DEVICE_VENDOR := ROCEOS
+          DEVICE_MODEL := K50S
+          SOC := rk3568
+          DEVICE_DTS := rockchip/rk3568-roc-k50s
+          UBOOT_DEVICE_NAME := nanopi-r5s-rk3568
+          DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455-sdio
+        endef
+        TARGET_DEVICES += roceos_k50s
+        EOF
         fi
 
         # 4. 配置 02_network 精准锁定网口物理拓扑与映射
         NETWORK_FILE="target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
         if [ -f "$NETWORK_FILE" ] && ! grep -q "roceos,k50s" "$NETWORK_FILE"; then
-          sed -i '/rockchip_setup_interfaces()/a \
-        roceos,k50s)\
-        \tucidef_set_network_device_path eth0 "platform/3c0400000.pcie/pci0001:10/0001:10:00.0/0001:11:00.0"\
-        \tucidef_set_network_device_path eth1 "platform/3c0800000.pcie/pci0002:20/0002:20:00.0/0002:21:00.0"\
-        \tucidef_set_network_device_path eth2 "platform/3c0000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0"\
-        \tucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3"\
-        \t;;\
+            sed -i '/rockchip_setup_interfaces()/a \
+        \troceos,k50s)\
+        \t\tucidef_set_network_device_path eth0 "platform/3c0400000.pcie/pci0001:10/0001:10:00.0/0001:11:00.0"\
+        \t\tucidef_set_network_device_path eth1 "platform/3c0800000.pcie/pci0002:20/0002:20:00.0/0002:21:00.0"\
+        \t\tucidef_set_network_device_path eth2 "platform/3c0000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0"\
+        \t\tucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3"\
+        \t\t;;\
         ' "$NETWORK_FILE"
         fi
 
         # 5. 生成核心编译配置文件 .config
-        {
-          echo "CONFIG_TARGET_rockchip=y"
-          echo "CONFIG_TARGET_rockchip_armv8=y"
-          echo "CONFIG_TARGET_rockchip_armv8_DEVICE_roceos_k50s=y"
-          echo "CONFIG_PACKAGE_u-boot-nanopi-r5s-rk3568=y"
-          echo "CONFIG_PACKAGE_kmod-r8125=y"
-          echo "CONFIG_PACKAGE_kmod-r8169=y"
-          echo "CONFIG_PACKAGE_kmod-nvme=y"
-          echo "CONFIG_PACKAGE_kmod-scsi-core=y"
-          echo "CONFIG_PACKAGE_kmod-ata-ahci=y"
-          echo "CONFIG_PACKAGE_kmod-brcmfmac=y"
-          echo "CONFIG_PACKAGE_brcmfmac-firmware-43455-sdio=y"
-          echo "CONFIG_PACKAGE_kmod-fs-ext4=y"
-          echo "CONFIG_PACKAGE_kmod-fs-btrfs=y"
-          echo "CONFIG_PACKAGE_kmod-fs-vfat=y"
-          echo "CONFIG_PACKAGE_kmod-fs-ntfs3=y"
-          echo "CONFIG_PACKAGE_e2fsprogs=y"
-          echo "CONFIG_PACKAGE_fdisk=y"
-          echo "CONFIG_PACKAGE_luci=y"
-          echo "CONFIG_PACKAGE_luci-theme-argon=y"
-          echo "CONFIG_PACKAGE_luci-app-store=y"
-          echo "CONFIG_PACKAGE_luci-app-quickstart=y"
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y"
-        } > .config
+        cat << 'EOF' > .config
+        CONFIG_TARGET_rockchip=y
+        CONFIG_TARGET_rockchip_armv8=y
+        CONFIG_TARGET_rockchip_armv8_DEVICE_roceos_k50s=y
+        CONFIG_PACKAGE_u-boot-nanopi-r5s-rk3568=y
+        CONFIG_PACKAGE_kmod-r8125=y
+        CONFIG_PACKAGE_kmod-r8169=y
+        CONFIG_PACKAGE_kmod-nvme=y
+        CONFIG_PACKAGE_kmod-scsi-core=y
+        CONFIG_PACKAGE_kmod-ata-ahci=y
+        CONFIG_PACKAGE_kmod-brcmfmac=y
+        CONFIG_PACKAGE_brcmfmac-firmware-43455-sdio=y
+        CONFIG_PACKAGE_kmod-fs-ext4=y
+        CONFIG_PACKAGE_kmod-fs-btrfs=y
+        CONFIG_PACKAGE_kmod-fs-vfat=y
+        CONFIG_PACKAGE_kmod-fs-ntfs3=y
+        CONFIG_PACKAGE_e2fsprogs=y
+        CONFIG_PACKAGE_fdisk=y
+        CONFIG_PACKAGE_luci=y
+        CONFIG_PACKAGE_luci-theme-argon=y
+        CONFIG_PACKAGE_luci-app-store=y
+        CONFIG_PACKAGE_luci-app-dockerman=y
+        CONFIG_PACKAGE_docker=y
+        CONFIG_PACKAGE_dockerd=y
+        CONFIG_PACKAGE_luci-app-quickstart=y
+        CONFIG_PACKAGE_luci-app-ttyd=y
+        EOF
 
     - name: Download DL Packages
       run: |
