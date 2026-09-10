@@ -15,7 +15,6 @@
 	modified_time = "2024/06/08 21:02:10";
 	eth_order = "0001:11:00.0,0002:21:00.0,0000:01:00.0,fe010000.ethernet,fe2a0000.ethernet";
 	kdebug = "0";
-
 	hwmodel_id = "K50S";
 	eth_driver = "r8125";
 	hw_support = "hdmi,2.5g";
@@ -29,6 +28,7 @@
 &gmac0 {
 	phy-mode = "rgmii";
 	clock_in_out = "input";
+
 	snps,reset-gpio = <&gpio2 RK_PD3 GPIO_ACTIVE_LOW>;
 	snps,reset-delays-us = <0 20000 100000>;
 
@@ -38,13 +38,15 @@
 
 	pinctrl-names = "default";
 	pinctrl-0 = <&gmac0_miim
-	             &gmac0_tx_bus2
-	             &gmac0_rx_bus2
-	             &gmac0_rgmii_clk
-	             &gmac0_rgmii_bus
-	             &gmac0_clkinout>;
+		     &gmac0_tx_bus2
+		     &gmac0_rx_bus2
+		     &gmac0_rgmii_clk
+		     &gmac0_rgmii_bus
+		     &gmac0_clkinout>;
+
 	tx_delay = <0x3c>;
 	rx_delay = <0x2f>;
+
 	phy-handle = <&rgmii_phy0>;
 	status = "okay";
 };
@@ -59,6 +61,7 @@
 &gmac1 {
 	phy-mode = "rgmii";
 	clock_in_out = "input";
+
 	snps,reset-gpio = <&gpio2 RK_PD5 GPIO_ACTIVE_LOW>;
 	snps,reset-delays-us = <0 20000 100000>;
 
@@ -68,11 +71,11 @@
 
 	pinctrl-names = "default";
 	pinctrl-0 = <&gmac1m1_miim
-	             &gmac1m1_tx_bus2
-	             &gmac1m1_rx_bus2
-	             &gmac1m1_rgmii_clk
-	             &gmac1m1_rgmii_bus
-	             &gmac1m1_clkinout>;
+		     &gmac1m1_tx_bus2
+		     &gmac1m1_rx_bus2
+		     &gmac1m1_rgmii_clk
+		     &gmac1m1_rgmii_bus
+		     &gmac1m1_clkinout>;
 
 	tx_delay = <0x4f>;
 	rx_delay = <0x26>;
@@ -89,50 +92,6 @@
 };
 
 &sata0 {
-	status = "okay";
-};
-
-&sdio_pwrseq {
-	status = "okay";
-	reset-gpios = <&gpio3 RK_PD5 GPIO_ACTIVE_LOW>;
-	post-power-on-delay-ms = <200>;
-};
-
-&wireless_wlan {
-	pinctrl-names = "default";
-	pinctrl-0 = <&wifi_host_wake_irq>;
-	WIFI,host_wake_irq = <&gpio3 RK_PD4 GPIO_ACTIVE_HIGH>;
-	wifi_chip_type = "ap6255";
-	status = "okay";
-};
-
-&wireless_bluetooth {
-	compatible = "bluetooth-platdata";
-	clocks = <&rk809 1>;
-	clock-names = "ext_clock";
-	uart_rts_gpios = <&gpio2 RK_PB1 GPIO_ACTIVE_LOW>;
-	pinctrl-names = "default", "rts_gpio";
-	pinctrl-0 = <&uart8m0_rtsn>;
-	pinctrl-1 = <&uart8_gpios>;
-	BT,reset_gpio    = <&gpio4 RK_PC4 GPIO_ACTIVE_HIGH>;
-	BT,wake_gpio     = <&gpio0 RK_PD5 GPIO_ACTIVE_HIGH>;
-	BT,wake_host_irq = <&gpio0 RK_PD4 GPIO_ACTIVE_HIGH>;
-	status = "okay";
-};
-
-&sdmmc2 {
-	max-frequency = <150000000>;
-	supports-sdio;
-	bus-width = <4>;
-	disable-wp;
-	cap-sd-highspeed;
-	cap-sdio-irq;
-	keep-power-in-suspend;
-	mmc-pwrseq = <&sdio_pwrseq>;
-	non-removable;
-	pinctrl-names = "default";
-	pinctrl-0 = <&sdmmc2m0_bus4 &sdmmc2m0_cmd &sdmmc2m0_clk>;
-	sd-uhs-sdr104;
 	status = "okay";
 };
 
