@@ -10,10 +10,6 @@ permissions:
 env:
   REPO_URL: https://github.com/istoreos/istoreos.git
   REPO_BRANCH: istoreos-24.10
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: k50s.config
-  DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: diy-part2.sh
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
@@ -61,29 +57,96 @@ jobs:
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Load Custom Feeds (diy-part1.sh)
-      run: |
-        [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
-
-    - name: Update & Install Feeds
+    - name: Setup Custom Feeds (iStore Center)
       run: |
         cd openwrt
+        sed -i '$a src-git istore https://github.com/linkease/istore;main' feeds.conf.default
+        sed -i '$a src-git nas https://github.com/linkease/nas-packages;master' feeds.conf.default
+        sed -i '$a src-git nas_luci https://github.com/linkease/nas-packages-luci;main' feeds.conf.default
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Apply Custom Configuration & Patches (diy-part2.sh)
+    - name: Inject ROCEOS K50S DTS & Device Configurations
       run: |
-        [ -e files ] && cp -r files openwrt/files
-        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
+        # 1. 注入默认后台管理 IP: 192.168.100.1
+        sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_generate
 
-    - name: Download DL Package
-      id: package
+        # 2. 创建并复制官方设备树 (若仓库中有 patches 则优先使用，没有则拉取原厂 DTS)
+        mkdir -p target/linux/rockchip/dts/rockchip
+        mkdir -p target/linux/rockchip/dts/rk3568
+        if [ -d "$GITHUB_WORKSPACE/patches" ] && [ -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts" ]; then
+          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts
+          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi
+          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts
+          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi
+        else
+          # 直接拉取 iStoreOS 官方 22.03 原厂 K50S DTS
+          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts" -o target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts
+          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi" -o target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi
+          cp -f target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts
+          cp -f target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi
+        fi
+
+        # 3. 在 armv8.mk 中注册 ROCEOS K50S 编译设备
+        if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
+        cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
+
+        define Device/roceos_k50s
+          DEVICE_VENDOR := ROCEOS
+          DEVICE_MODEL := K50S
+          SOC := rk3568
+          DEVICE_DTS := rockchip/rk3568-roc-k50s
+          UBOOT_DEVICE_NAME := nanopi-r5s-rk3568
+          DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455-sdio
+        endef
+        TARGET_DEVICES += roceos_k50s
+        EOF
+        fi
+
+        # 4. 配置 02_network 精准锁定网口物理拓扑与映射
+        NETWORK_FILE="target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
+        if [ -f "$NETWORK_FILE" ] && ! grep -q "roceos,k50s" "$NETWORK_FILE"; then
+            sed -i '/rockchip_setup_interfaces()/a \
+        \troceos,k50s)\
+        \t\tucidef_set_network_device_path eth0 "platform/3c0400000.pcie/pci0001:10/0001:10:00.0/0001:11:00.0"\
+        \t\tucidef_set_network_device_path eth1 "platform/3c0800000.pcie/pci0002:20/0002:20:00.0/0002:21:00.0"\
+        \t\tucidef_set_network_device_path eth2 "platform/3c0000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0"\
+        \t\tucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3"\
+        \t\t;;\
+        ' "$NETWORK_FILE"
+        fi
+
+        # 5. 生成核心编译配置文件 .config
+        cat << 'EOF' > .config
+        CONFIG_TARGET_rockchip=y
+        CONFIG_TARGET_rockchip_armv8=y
+        CONFIG_TARGET_rockchip_armv8_DEVICE_roceos_k50s=y
+        CONFIG_PACKAGE_u-boot-nanopi-r5s-rk3568=y
+        CONFIG_PACKAGE_kmod-r8125=y
+        CONFIG_PACKAGE_kmod-r8169=y
+        CONFIG_PACKAGE_kmod-nvme=y
+        CONFIG_PACKAGE_kmod-scsi-core=y
+        CONFIG_PACKAGE_kmod-ata-ahci=y
+        CONFIG_PACKAGE_kmod-brcmfmac=y
+        CONFIG_PACKAGE_brcmfmac-firmware-43455-sdio=y
+        CONFIG_PACKAGE_kmod-fs-ext4=y
+        CONFIG_PACKAGE_kmod-fs-btrfs=y
+        CONFIG_PACKAGE_kmod-fs-vfat=y
+        CONFIG_PACKAGE_kmod-fs-ntfs3=y
+        CONFIG_PACKAGE_e2fsprogs=y
+        CONFIG_PACKAGE_fdisk=y
+        CONFIG_PACKAGE_luci=y
+        CONFIG_PACKAGE_luci-theme-argon=y
+        CONFIG_PACKAGE_luci-app-store=y
+        CONFIG_PACKAGE_luci-app-dockerman=y
+        CONFIG_PACKAGE_docker=y
+        CONFIG_PACKAGE_dockerd=y
+        CONFIG_PACKAGE_luci-app-quickstart=y
+        CONFIG_PACKAGE_luci-app-ttyd=y
+        EOF
+
+    - name: Download DL Packages
       run: |
         cd openwrt
         make defconfig
@@ -98,7 +161,6 @@ jobs:
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
-        grep 'CONFIG_TARGET_' .config > target.config
         SOURCE_DATE=$(date +%Y%m%d)
         echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
 
@@ -106,21 +168,21 @@ jobs:
       id: organize
       if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        cd openwrt/bin/targets/rockchip/armv8
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload Firmware to Artifacts
       uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: iStoreOS-24.10-ROCEOS-K50S-${{ env.SOURCE_DATE }}
         path: ${{ env.FIRMWARE }}
 
     - name: Generate Release Tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
         echo "release_tag=v24.10.0.1-ROCEOS-K50S-$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
         touch release.txt
@@ -132,7 +194,7 @@ jobs:
 
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      if: steps.organize.outputs.status == 'success' && steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
