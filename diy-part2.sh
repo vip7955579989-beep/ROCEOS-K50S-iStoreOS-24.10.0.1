@@ -29,7 +29,7 @@ define Device/roceos_k50s
   DEVICE_MODEL := K50S
   SOC := rk3568
   DEVICE_DTS := rockchip/rk3568-roc-k50s rockchip/rk3568-roceos-k50s
-  DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455-sdio
+  DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455
 endef
 TARGET_DEVICES += roceos_k50s
 DEVICE_EOF
@@ -40,7 +40,7 @@ for netfile in $(find target/linux/rockchip -name "02_network"); do
   if [ -f "$netfile" ] && ! grep -q "roceos,k50s" "$netfile"; then
     sed -i '/case "\$board" in/a\
 roceos,k50s)\
-	ucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3 eth4"\
-	;;' "$netfile" 2>/dev/null || true
+\tucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3 eth4"\
+\t;;' "$netfile" 2>/dev/null || true
   fi
 done
