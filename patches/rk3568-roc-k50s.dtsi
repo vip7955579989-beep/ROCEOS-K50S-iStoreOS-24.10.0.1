@@ -10,7 +10,6 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/input/linux-event-codes.h>
-
 #include "rk3568.dtsi"
 
 / {
@@ -93,14 +92,17 @@
 		vin-supply = <&vcc3v3_sys>;
 	};
 
+	/* 3颗 2.5G 网卡供电总开关：原理图 LAN_PWREN (GPIO3_PB7)，设为常开 */
 	vcc3v3_pcie: vcc3v3-pcie {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc3v3_pcie";
+		regulator-always-on;
+		regulator-boot-on;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 		enable-active-high;
-		gpio = <&gpio0 RK_PC4 GPIO_ACTIVE_HIGH>;
-		startup-delay-us = <5000>;
+		gpio = <&gpio3 RK_PB7 GPIO_ACTIVE_HIGH>;
+		startup-delay-us = <50000>;
 		vin-supply = <&vcc5v0_sys>;
 	};
 
@@ -186,8 +188,10 @@
 		reg = <0x20>;
 		interrupt-parent = <&gpio0>;
 		interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
+
 		pinctrl-names = "default";
 		pinctrl-0 = <&pmic_int>;
+
 		rockchip,system-power-controller;
 		wakeup-source;
 		#clock-cells = <1>;
@@ -482,6 +486,7 @@
 &usb_host1_ehci {
 	status = "okay";
 };
+
 &usb_host1_ohci {
 	status = "okay";
 };
