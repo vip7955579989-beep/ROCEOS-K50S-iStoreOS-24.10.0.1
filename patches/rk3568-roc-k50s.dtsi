@@ -11,9 +11,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/input/linux-event-codes.h>
-#include <dt-bindings/display/drm_mipi_dsi.h>
-#include <dt-bindings/display/rockchip_vop.h>
-#include <dt-bindings/sensor-dev.h>
+
 #include "rk3568.dtsi"
 
 / {
@@ -232,12 +230,6 @@
         pinctrl-names = "default";
         pinctrl-0 = <&wifi_enable_h>;
 
-        /*
-         * On the module itself this is one of these (depending
-         * on the actual card populated):
-         * - SDIO_RESET_L_WL_REG_ON
-         * - PDN (power down when low)
-         */
         post-power-on-delay-ms = <200>;
         reset-gpios = <&gpio3 RK_PD5 GPIO_ACTIVE_LOW>;
     };
@@ -254,7 +246,6 @@
         compatible = "bluetooth-platdata";
         clocks = <&rk809 1>;
         clock-names = "ext_clock";
-        //wifi-bt-power-toggle;
         uart_rts_gpios = <&gpio2 RK_PB1 GPIO_ACTIVE_LOW>;
         pinctrl-names = "default", "rts_gpio";
         pinctrl-0 = <&uart8m0_rtsn>;
@@ -268,21 +259,18 @@
 	leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
-		pinctrl-0 =
-			<&led_green_en>;
+		pinctrl-0 = <&led_green_en>;
 
 		led_green: green {
 			gpios = <&gpio2 RK_PD7 GPIO_ACTIVE_HIGH>;
 			label = "green:sys";
 			linux,default-trigger = "heartbeat";
 		};
-		
 	};
-
 };
 
 &combphy0_us {
-	rockchip,dis-u3otg0-port; /* disable USB3.0 */
+	rockchip,dis-u3otg0-port;
 	status = "okay";
 };
 
@@ -389,10 +377,7 @@
 		wakeup-source;
 		#clock-cells = <1>;
 		clock-output-names = "rk808-clkout1", "rk808-clkout2";
-		//fb-inner-reg-idxs = <2>;
-		/* 1: rst regs (default in codes), 0: rst the pmic */
 		pmic-reset-func = <0>;
-		/* not save the PMIC_POWER_EN register in uboot */
 		not-save-power-en = <1>;
 
 		vcc1-supply = <&vcc3v3_sys>;
@@ -698,7 +683,6 @@
 			rockchip,pins =
 				<2 RK_PD7 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
-		
 	};
 
 	keys {
@@ -749,12 +733,12 @@
             rockchip,pins = <3 RK_PD5 RK_FUNC_GPIO &pcfg_pull_none>;
         };
     };
+
     wireless-bluetooth {
         uart8_gpios: uart8-gpios {
             rockchip,pins = <2 RK_PB1 RK_FUNC_GPIO &pcfg_pull_none>;
         };
     };
-
 };
 
 &pmu_io_domains {
@@ -782,13 +766,6 @@
 
 &pwm7 {
 	status = "disabled";
-
-	compatible = "rockchip,remotectl-pwm";
-	remote_pwm_id = <3>;
-	handle_cpu_id = <1>;
-	remote_support_psci = <0>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pwm7_pins>;
 };
 
 &reserved_memory {
@@ -936,10 +913,10 @@
 &usbdrd_dwc3 {
 	dr_mode = "host";
 	extcon = <&usb2phy0>;
-	phys = <&u2phy0_otg>; /* only USB2.0 */
-	phy-names = "usb2-phy"; /* only USB2.0 */
-	maximum-speed = "high-speed"; /* only USB2.0 */
-	snps,dis_u2_susphy_quirk; /* only USB2.0 */
+	phys = <&u2phy0_otg>;
+	phy-names = "usb2-phy";
+	maximum-speed = "high-speed";
+	snps,dis_u2_susphy_quirk;
 	status = "disabled";
 };
 
