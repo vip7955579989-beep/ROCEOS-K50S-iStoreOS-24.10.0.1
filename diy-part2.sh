@@ -35,11 +35,12 @@ TARGET_DEVICES += roceos_k50s
 DEVICE_EOF
 fi
 
-# 4. 配置网口映射 (避免 sed 多行语法错误)
-NETWORK_FILE="target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
-if [ -f "$NETWORK_FILE" ] && ! grep -q "roceos,k50s" "$NETWORK_FILE"; then
-	sed -i '/case "\$board" in/a\
+# 4. 配置网口映射 (自动递归查找 02_network，确保兼容性并正确分配 LAN/WAN)
+for netfile in $(find target/linux/rockchip -name "02_network"); do
+  if [ -f "$netfile" ] && ! grep -q "roceos,k50s" "$netfile"; then
+    sed -i '/case "\$board" in/a\
 roceos,k50s)\
 	ucidef_set_interfaces_lan_wan "eth1" "eth0"\
-	;;' "$NETWORK_FILE" 2>/dev/null || true
-fi
+	;;' "$netfile" 2>/dev/null || true
+  fi
+done
