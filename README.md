@@ -1,0 +1,1 @@
+# ROCEOS-K50S-iStoreOS-24.10.0.1
