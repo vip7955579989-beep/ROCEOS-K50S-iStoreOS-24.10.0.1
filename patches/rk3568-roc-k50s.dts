@@ -6,15 +6,14 @@
 
 /dts-v1/;
 
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/rockchip.h>
 #include "rk3568-roc-k50s.dtsi"
 
 / {
 	model = "ROCEOS K50S";
-	compatible = "ROCEOS,K50S", "rockchip,rk3568";
+	compatible = "roceos,roc-k50s", "rockchip,rk3568";
 	is_testing = "1";
-	modified_time = "2024/06/08 21:02:10";
-	eth_order = "0001:11:00.0,0002:21:00.0,0000:01:00.0,fe010000.ethernet,fe2a0000.ethernet";
-	kdebug = "0";
 	hwmodel_id = "K50S";
 	eth_driver = "r8125";
 	hw_support = "hdmi,2.5g";
@@ -96,5 +95,5 @@
 };
 
 &uart2 {
-	status = "disabled";
+	status = "okay";
 };
