@@ -21,209 +21,149 @@ jobs:
       contents: write
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Free Disk Space
-      uses: jlumbroso/free-disk-space@main
-      with:
-        tool-cache: true
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        swap-storage: true
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
 
-    - name: Initialize Environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses5-dev libssl-dev python3-distutils python3-pyelftools python3-setuptools python3-pip \
-          rsync unzip zlib1g-dev file msmtp texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake \
-          libtool sed subversion patch lib32gcc-s1 libc6-dev-i386 device-tree-compiler
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
+      - name: Initialize Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev python3-distutils python3-pyelftools python3-setuptools python3-pip \
+            rsync unzip zlib1g-dev file msmtp texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake \
+            libtool sed subversion patch lib32gcc-s1 libc6-dev-i386 device-tree-compiler
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
 
-    - name: Clone Source Code
-      working-directory: /workdir
-      run: |
-        df -h
-        git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+      - name: Clone Source Code
+        working-directory: /workdir
+        run: |
+          df -h
+          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Setup Custom Feeds (iStore Center)
-      run: |
-        cd openwrt
-        sed -i '$a src-git istore https://github.com/linkease/istore;main' feeds.conf.default
-        sed -i '$a src-git nas https://github.com/linkease/nas-packages;master' feeds.conf.default
-        sed -i '$a src-git nas_luci https://github.com/linkease/nas-packages-luci;main' feeds.conf.default
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
+      - name: Setup Custom Feeds (iStore Center)
+        run: |
+          cd openwrt
+          [ -e $GITHUB_WORKSPACE/diy-part1.sh ] && chmod +x $GITHUB_WORKSPACE/diy-part1.sh && $GITHUB_WORKSPACE/diy-part1.sh
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-    - name: Inject ROCEOS K50S DTS & Device Configurations
-      run: |
-        cd openwrt
-        # 1. 注入默认后台管理 IP: 192.168.100.1
-        sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_generate
+      - name: Inject ROCEOS K50S DTS & Device Configurations
+        run: |
+          cd openwrt
+          # 1. 注入 DTS 到内核源码树与 target 检索树
+          mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
+          mkdir -p target/linux/rockchip/dts/rockchip
+          mkdir -p target/linux/rockchip/dts/rk3568
 
-        # 2. 注入 DTS 到内核构建源码与 target 检索树
-        mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
-        mkdir -p target/linux/rockchip/dts/rockchip
-        mkdir -p target/linux/rockchip/dts/rk3568
-
-        if [ -d "$GITHUB_WORKSPACE/patches" ] && [ -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts" ]; then
-          SRC_DIR="$GITHUB_WORKSPACE/patches"
-          cp -f $SRC_DIR/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-          cp -f $SRC_DIR/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-        else
-          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts" -o target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts
-          curl -sSL "https://raw.githubusercontent.com/istoreos/istoreos/istoreos-22.03/target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi" -o target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi
-        fi
-
-        # 同步备份至所有可能索检的 dts 目录
-        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/
-        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/
-        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/
-        cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/
-
-        # 3. 在 armv8.mk 中定义 ROCEOS K50S
-        if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
-        cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
-
-        define Device/roceos_k50s
-          DEVICE_VENDOR := ROCEOS
-          DEVICE_MODEL := K50S
-          SOC := rk3568
-          DEVICE_DTS := rockchip/rk3568-roc-k50s
-          UBOOT_DEVICE_NAME := nanopi-r5s-rk3568
-          DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455-sdio
-        endef
-        TARGET_DEVICES += roceos_k50s
-        EOF
-        fi
-
-        # 4. 配置网卡拓扑与接口绑定
-        NETWORK_FILE="target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
-        if [ -f "$NETWORK_FILE" ] && ! grep -q "roceos,k50s" "$NETWORK_FILE"; then
-            sed -i '/rockchip_setup_interfaces()/a \
-        \troceos,k50s)\
-        \t\tucidef_set_network_device_path eth0 "platform/3c0400000.pcie/pci0001:10/0001:10:00.0/0001:11:00.0"\
-        \t\tucidef_set_network_device_path eth1 "platform/3c0800000.pcie/pci0002:20/0002:20:00.0/0002:21:00.0"\
-        \t\tucidef_set_network_device_path eth2 "platform/3c0000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0"\
-        \t\tucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3"\
-        \t\t;;\
-        ' "$NETWORK_FILE"
-        fi
-
-        # 5. 生成配置文件
-        cat << 'EOF' > .config
-        CONFIG_TARGET_rockchip=y
-        CONFIG_TARGET_rockchip_armv8=y
-        CONFIG_TARGET_rockchip_armv8_DEVICE_roceos_k50s=y
-        CONFIG_PACKAGE_u-boot-nanopi-r5s-rk3568=y
-        CONFIG_PACKAGE_kmod-r8125=y
-        CONFIG_PACKAGE_kmod-r8169=y
-        CONFIG_PACKAGE_kmod-nvme=y
-        CONFIG_PACKAGE_kmod-scsi-core=y
-        CONFIG_PACKAGE_kmod-ata-ahci=y
-        CONFIG_PACKAGE_kmod-brcmfmac=y
-        CONFIG_PACKAGE_brcmfmac-firmware-43455-sdio=y
-        CONFIG_PACKAGE_kmod-fs-ext4=y
-        CONFIG_PACKAGE_kmod-fs-btrfs=y
-        CONFIG_PACKAGE_kmod-fs-vfat=y
-        CONFIG_PACKAGE_kmod-fs-ntfs3=y
-        CONFIG_PACKAGE_e2fsprogs=y
-        CONFIG_PACKAGE_fdisk=y
-        CONFIG_PACKAGE_luci=y
-        CONFIG_PACKAGE_luci-theme-argon=y
-        CONFIG_PACKAGE_luci-app-store=y
-        CONFIG_PACKAGE_luci-app-dockerman=y
-        CONFIG_PACKAGE_docker=y
-        CONFIG_PACKAGE_dockerd=y
-        CONFIG_PACKAGE_luci-app-quickstart=y
-        CONFIG_PACKAGE_luci-app-ttyd=y
-        EOF
-
-    - name: Download DL Packages
-      run: |
-        cd openwrt
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: Pre-build Kernel Prepare & Sync DTS
-      run: |
-        cd openwrt
-        # 预先触发内核准备，直接将 DTS 注入并注册到 Linux 6.6 内核树的 Makefile
-        make target/linux/prepare -j$(nproc) || true
-        for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
-          if [ -d "$dts_dir" ]; then
-            cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
-            if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
-              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
-            fi
+          if [ -d "$GITHUB_WORKSPACE/patches" ] && [ -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts" ]; then
+            SRC_DIR="$GITHUB_WORKSPACE/patches"
+            cp -f $SRC_DIR/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
+            cp -f $SRC_DIR/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
           fi
-        done
 
-    - name: Compile Firmware
-      id: compile
-      run: |
-        cd openwrt
-        echo -e "$(nproc) thread compile"
-        # 确保 DTS 在最终镜像生成阶段常驻
-        make -j$(nproc) || {
+          # 同步至各级 DTS 检索目录
+          cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/
+          cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/
+          cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/
+          cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/
+
+          # 2. 执行自定义拓展脚本 diy-part2.sh
+          [ -e $GITHUB_WORKSPACE/diy-part2.sh ] && chmod +x $GITHUB_WORKSPACE/diy-part2.sh && $GITHUB_WORKSPACE/diy-part2.sh
+
+          # 3. 加载仓库中的 k50s.config (避免硬编码覆盖)
+          if [ -f "$GITHUB_WORKSPACE/k50s.config" ]; then
+            cp -f $GITHUB_WORKSPACE/k50s.config .config
+          fi
+
+      - name: Download DL Packages
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Pre-build Kernel Prepare & Sync DTS
+        run: |
+          cd openwrt
+          make target/linux/prepare -j$(nproc) || true
           for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
             if [ -d "$dts_dir" ]; then
               cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
+              if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
+                echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
+              fi
             fi
           done
-          make -j1 V=s
-        }
-        echo "status=success" >> $GITHUB_OUTPUT
-        SOURCE_DATE=$(date +%Y%m%d)
-        echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
 
-    - name: Organize Firmware Output
-      id: organize
-      if: steps.compile.outputs.status == 'success' && !cancelled()
-      run: |
-        cd openwrt/bin/targets/rockchip/armv8
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Compile Firmware
+        id: compile
+        run: |
+          cd openwrt
+          echo -e "$(nproc) thread compile"
+          make -j$(nproc) || {
+            for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
+              if [ -d "$dts_dir" ]; then
+                cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
+              fi
+            done
+            make -j1 V=s
+          }
+          echo "status=success" >> $GITHUB_OUTPUT
+          SOURCE_DATE=$(date +%Y%m%d)
+          echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
 
-    - name: Upload Firmware to Artifacts
-      uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: iStoreOS-24.10-ROCEOS-K50S-${{ env.SOURCE_DATE }}
-        path: ${{ env.FIRMWARE }}
+      - name: Organize Firmware Output
+        id: organize
+        if: steps.compile.outputs.status == 'success' && !cancelled()
+        run: |
+          cd openwrt/bin/targets/rockchip/armv8
+          rm -rf packages
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Generate Release Tag
-      id: tag
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      run: |
-        echo "release_tag=v24.10.0.1-ROCEOS-K50S-$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
-        touch release.txt
-        echo "## iStoreOS 24.10 for ROCEOS K50S" >> release.txt
-        echo "- **Kernel**: Linux 6.6 (Rockchip ARMv8)" >> release.txt
-        echo "- **Hardware**: RK3568, 3x RTL8125BG 2.5G, 2x RTL8211FS SFP" >> release.txt
-        echo "- **Default IP**: 192.168.100.1 (Username: root, Password: password)" >> release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Upload Firmware to Artifacts
+        uses: actions/upload-artifact@v4
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        with:
+          name: iStoreOS-24.10-ROCEOS-K50S-${{ env.SOURCE_DATE }}
+          path: ${{ env.FIRMWARE }}
 
-    - name: Publish to GitHub Releases
-      uses: softprops/action-gh-release@v2
-      if: steps.organize.outputs.status == 'success' && steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+      - name: Generate Release Tag
+        id: tag
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        run: |
+          echo "release_tag=v24.10.0.1-ROCEOS-K50S-$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+          touch release.txt
+          echo "## iStoreOS 24.10 for ROCEOS K50S" >> release.txt
+          echo "- **Kernel**: Linux 6.6 (Rockchip ARMv8)" >> release.txt
+          echo "- **Hardware**: RK3568, 3x RTL8125BG 2.5G, 2x RTL8211FS SFP" >> release.txt
+          echo "- **Default IP**: 192.168.100.1 (Username: root, Password: password)" >> release.txt
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: steps.organize.outputs.status == 'success' && steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
