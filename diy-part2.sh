@@ -8,19 +8,12 @@ sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_gener
 mkdir -p target/linux/rockchip/dts/rockchip
 mkdir -p target/linux/rockchip/dts/rk3568
 
-# 拷贝为原始名 (供内核直接编译)
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dts 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/rk3568-roc-k50s.dtsi 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dts 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/rk3568-roc-k50s.dtsi 2>/dev/null || true
+cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/ 2>/dev/null || true
+cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/ 2>/dev/null || true
+cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/ 2>/dev/null || true
+cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/ 2>/dev/null || true
 
-# 拷贝为设备定义名
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/rk3568-roceos-k50s.dts 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/rk3568-roceos-k50s.dtsi 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/rk3568-roceos-k50s.dts 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/rk3568-roceos-k50s.dtsi 2>/dev/null || true
-
-# 3. 在 target/linux/rockchip/image/armv8.mk 中注册 ROCEOS K50S 设备定义
+# 3. 在 target/linux/rockchip/image/armv8.mk 中注册 ROCEOS K50S 设备定义 (仅保留实际存在的 rk3568-roc-k50s)
 if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
 cat << 'DEVICE_EOF' >> target/linux/rockchip/image/armv8.mk
 
@@ -28,7 +21,7 @@ define Device/roceos_k50s
   DEVICE_VENDOR := ROCEOS
   DEVICE_MODEL := K50S
   SOC := rk3568
-  DEVICE_DTS := rockchip/rk3568-roc-k50s rockchip/rk3568-roceos-k50s
+  DEVICE_DTS := rockchip/rk3568-roc-k50s
   DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455
 endef
 TARGET_DEVICES += roceos_k50s
