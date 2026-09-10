@@ -4,7 +4,7 @@
 # 1. 修改默认管理后台 IP 为 192.168.100.1
 sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_generate
 
-# 2. 注入 ROCEOS K50S DTS 与 DTSI (双重名称覆盖，确保编译和镜像打包两端都能找到)
+# 2. 注入 ROCEOS K50S DTS 与 DTSI
 mkdir -p target/linux/rockchip/dts/rockchip
 mkdir -p target/linux/rockchip/dts/rk3568
 
@@ -35,14 +35,11 @@ TARGET_DEVICES += roceos_k50s
 DEVICE_EOF
 fi
 
-# 4. 配置网口映射
+# 4. 配置网口映射 (避免 sed 多行语法错误)
 NETWORK_FILE="target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
 if [ -f "$NETWORK_FILE" ] && ! grep -q "roceos,k50s" "$NETWORK_FILE"; then
-	sed -i '/rockchip_setup_interfaces()/a\
-	roceos,k50s)\
-		ucidef_set_network_device_path eth0 "platform/3c0400000.pcie/pci0001:10/0001:10:00.0/0001:11:00.0"\
-		ucidef_set_network_device_path eth1 "platform/3c0800000.pcie/pci0002:20/0002:20:00.0/0002:21:00.0"\
-		ucidef_set_network_device_path eth2 "platform/3c0000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0"\
-		ucidef_set_interfaces_lan_wan "eth0 eth1 eth2" "eth3"\
-		;;' "$NETWORK_FILE"
+	sed -i '/case "\$board" in/a\
+roceos,k50s)\
+	ucidef_set_interfaces_lan_wan "eth1" "eth0"\
+	;;' "$NETWORK_FILE" 2>/dev/null || true
 fi
