@@ -482,16 +482,7 @@
 &usb_host1_ehci {
 	status = "okay";
 };
-
 &usb_host1_ohci {
-	status = "okay";
-};
-
-&usbhost_dwc3 {
-	status = "okay";
-};
-
-&usbhost30 {
 	status = "okay";
 };
 
