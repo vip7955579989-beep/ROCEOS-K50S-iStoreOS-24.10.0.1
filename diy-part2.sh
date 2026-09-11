@@ -37,3 +37,8 @@ roceos,k50s)\
 \t;;' "$netfile" 2>/dev/null || true
   fi
 done
+
+# 5. 调整 RootFS 分区大小为 1024MB 并启用 ext4 输出 (防止打包 out of space 报错)
+sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=[0-9]*/CONFIG_TARGET_ROOTFS_PARTSIZE=1024/g' .config 2>/dev/null || true
+echo "CONFIG_TARGET_ROOTFS_PARTSIZE=1024" >> .config
+echo "CONFIG_TARGET_ROOTFS_EXT4FS=y" >> .config
