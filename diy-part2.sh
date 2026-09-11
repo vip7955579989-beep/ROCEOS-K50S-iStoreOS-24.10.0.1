@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: OpenWrt DIY script part 2 (Device injection and customization)
+# Description: OpenWrt DIY script part 2 (Device injection, U-Boot mapping and customization)
 
 # 1. 修改默认管理后台 IP 为 192.168.100.1
 sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_generate
@@ -13,7 +13,7 @@ cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/r
 cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/ 2>/dev/null || true
 cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/ 2>/dev/null || true
 
-# 3. 在 target/linux/rockchip/image/armv8.mk 中注册 ROCEOS K50S 设备定义 (仅保留实际存在的 rk3568-roc-k50s)
+# 3. 在 target/linux/rockchip/image/armv8.mk 中注册 ROCEOS K50S 设备定义 (指定 UBOOT 为 rock-3a-rk3568)
 if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
 cat << 'DEVICE_EOF' >> target/linux/rockchip/image/armv8.mk
 
@@ -21,6 +21,7 @@ define Device/roceos_k50s
   DEVICE_VENDOR := ROCEOS
   DEVICE_MODEL := K50S
   SOC := rk3568
+  UBOOT := rock-3a-rk3568
   DEVICE_DTS := rockchip/rk3568-roc-k50s
   DEVICE_PACKAGES := kmod-r8125 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455
 endef
@@ -42,3 +43,6 @@ done
 sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=[0-9]*/CONFIG_TARGET_ROOTFS_PARTSIZE=1024/g' .config 2>/dev/null || true
 echo "CONFIG_TARGET_ROOTFS_PARTSIZE=1024" >> .config
 echo "CONFIG_TARGET_ROOTFS_EXT4FS=y" >> .config
+
+# 6. 确保编译配置开启了公版 RK3568 U-Boot 的构建，避免打包时 bin 缺失
+echo "CONFIG_PACKAGE_u-boot-rock-3a-rk3568=y" >> .config
