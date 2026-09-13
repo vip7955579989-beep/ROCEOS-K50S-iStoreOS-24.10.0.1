@@ -164,7 +164,7 @@ jobs:
         echo "## iStoreOS 24.10 for ROCEOS K50S" >> release.txt
         echo "- **Kernel**: Linux 6.6 (Rockchip ARMv8)" >> release.txt
         echo "- **Hardware**: RK3568, 3x RTL8125BG 2.5G, 2x RTL8211FS SFP" >> release.txt
-        echo "- **Default IP**: 192.168.100.1 (Username: root, Password: password)" >> release.txt
+        echo "- **Default IP**: 192.168.0.254 (Username: root, Password: password)" >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Publish to GitHub Releases
