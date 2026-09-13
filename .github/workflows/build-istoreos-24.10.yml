@@ -1,16 +1,17 @@
-name: Build iStoreOS 24.10 for ROCEOS K50S
+name: Build iStoreOS for ROCEOS K50S
 
 on:
   repository_dispatch:
   workflow_dispatch:
 
 env:
-  REPO_URL: https://github.com/istoreos/istoreos
+  REPO_URL: https://github.com/istoreos/istoreos.git
   REPO_BRANCH: istoreos-24.10
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: k50s.config
+  CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
+  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
@@ -20,169 +21,145 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Initialization Environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune -a -f
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install -y $(curl -fsSL https://raw.githubusercontent.com/actions/runner-images/main/images/ubuntu/toolsets/toolset-2204.json | jq -r '.apt.common_packages[]' 2>/dev/null || true)
-        sudo -E apt-get -qq install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses5-dev libssl-dev python3-distutils python3-pyelftools python3-setuptools swig rsync unzip zlib1g-dev file wget device-tree-compiler
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -a -f
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y $(curl -fsSL https://raw.githubusercontent.com/istoreos/istoreos/refs/heads/istoreos-24.10/scripts/init-env.sh | grep -o 'apt-get install [^;]*' | sed 's/apt-get install //g')
+          sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+            git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+            mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
+            rsync subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev python3-setuptools libfuse-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
 
-    - name: Clone Source Code
-      working-directory: /workdir
-      run: |
-        df -h
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+      - name: Clone source code
+        working-directory: /workdir
+        run: |
+          df -hT $PWD
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Load Custom Feeds & DIY Script 1
-      run: |
-        [ -e $FEEDS_CONF ] && cp -f $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+      - name: Load custom feeds
+        run: |
+          [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x $DIY_P1_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    - name: Update & Install Feeds
-      run: |
-        cd openwrt
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
+      - name: Update feeds
+        run: cd openwrt && ./scripts/feeds update -a
 
-    - name: Inject ROCEOS K50S DTS & Device Configurations
-      run: |
-        cd openwrt
-        # 1. 确保目标架构补丁与源码目录存在
-        mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
-        mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts
-        mkdir -p target/linux/rockchip/dts/rockchip
-        mkdir -p target/linux/rockchip/dts/rk3568
-        mkdir -p target/linux/rockchip/dts
+      - name: Install feeds
+        run: cd openwrt && ./scripts/feeds install -a
 
-        # 从仓库 patches 拷贝 DTS/DTSI 到 OpenWrt 编译树各级目录
-        if [ -d "$GITHUB_WORKSPACE/patches" ]; then
-          for dst in \
-            target/linux/rockchip/files/arch/arm64/boot/dts/rockchip \
-            target/linux/rockchip/files/arch/arm64/boot/dts \
-            target/linux/rockchip/dts/rockchip \
-            target/linux/rockchip/dts/rk3568 \
-            target/linux/rockchip/dts; do
-            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts "$dst/" 2>/dev/null || true
-            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi "$dst/" 2>/dev/null || true
-          done
-        fi
+      - name: Load custom configuration
+        run: |
+          [ -e files ] && cp -r files openwrt/files
+          [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
+          chmod +x $DIY_P2_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
 
-        # 2. 加载仓库中的 k50s.config 到 .config
-        if [ -f "$GITHUB_WORKSPACE/k50s.config" ]; then
-          cp -f $GITHUB_WORKSPACE/k50s.config .config
-        fi
+      - name: Download package
+        id: package
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
 
-        # 3. 执行自定义拓展脚本 diy-part2.sh
-        [ -e $GITHUB_WORKSPACE/diy-part2.sh ] && chmod +x $GITHUB_WORKSPACE/diy-part2.sh && $GITHUB_WORKSPACE/diy-part2.sh
-
-        # 4. 部署官方提取的 K50S U-Boot 引导文件至 staging image 目录供最终镜像打包
-        mkdir -p staging_dir/target-aarch64_generic_musl/image
-        if [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ]; then
-          cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
-          echo ">>> Successfully deployed k50s-rk3568-u-boot-rockchip.bin to staging image dir."
-        else
-          echo ">>> WARNING: k50s-rk3568-u-boot-rockchip.bin not found in repository root!"
-        fi
-
-    - name: Download DL Packages
-      run: |
-        cd openwrt
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: Pre-build Kernel Prepare & Sync DTS
-      run: |
-        cd openwrt
-        make target/linux/prepare -j$(nproc) || true
-        for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts; do
-          if [ -d "$dts_dir" ]; then
-            mkdir -p "$dts_dir/rockchip"
-            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
-            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/rockchip/" 2>/dev/null || true
-            if [ -f "$dts_dir/rockchip/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/rockchip/Makefile"; then
-              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/rockchip/Makefile"
-            fi
-            if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
-              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
-            fi
-          fi
-        done
-
-    - name: Compile Firmware
-      id: compile
-      run: |
-        cd openwrt
-        mkdir -p staging_dir/target-aarch64_generic_musl/image
-        [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
-
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || {
-          for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts; do
+      - name: Pre-build Kernel Prepare & Sync DTS
+        run: |
+          cd openwrt
+          make target/linux/prepare -j$(nproc) || true
+          for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
             if [ -d "$dts_dir" ]; then
-              mkdir -p "$dts_dir/rockchip"
               cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
-              cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/rockchip/" 2>/dev/null || true
+              if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
+                echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
+              fi
             fi
           done
-          mkdir -p staging_dir/target-aarch64_generic_musl/image
+
+      - name: Compile Firmware
+        id: compile
+        run: |
+          cd openwrt
+          mkdir -p staging_dir/target-aarch64_generic_musl/image bin/targets/rockchip/armv8
           [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
-          make -j1 V=s
-        }
-        echo "status=success" >> $GITHUB_OUTPUT
-        SOURCE_DATE=$(date +%Y%m%d)
-        echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
+          [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" bin/targets/rockchip/armv8/
+          echo -e "$(nproc) thread compile"
+          make -j$(nproc) || {
+            for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
+              if [ -d "$dts_dir" ]; then
+                cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
+              fi
+            done
+            mkdir -p staging_dir/target-aarch64_generic_musl/image bin/targets/rockchip/armv8
+            [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
+            [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" bin/targets/rockchip/armv8/
+            make -j1 V=s
+          }
+          echo "status=success" >> $GITHUB_OUTPUT
+          SOURCE_DATE=$(date +%Y%m%d)
+          echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
 
-    - name: Organize Firmware Output
-      id: organize
-      if: steps.compile.outputs.status == 'success' && !cancelled()
-      run: |
-        cd openwrt/bin/targets/rockchip/armv8
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Check space usage
+        if: (!cancelled())
+        run: df -hT
 
-    - name: Upload Firmware to Artifacts
-      uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: iStoreOS-24.10-ROCEOS-K50S-${{ env.SOURCE_DATE }}
-        path: ${{ env.FIRMWARE }}
+      - name: Upload bin directory
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        with:
+          name: OpenWrt_bin_${{ env.SOURCE_DATE }}
+          path: openwrt/bin
 
-    - name: Generate Release Tag
-      id: tag
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      run: |
-        echo "release_tag=v24.10.0.1-ROCEOS-K50S-$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
-        touch release.txt
-        echo "## iStoreOS 24.10 for ROCEOS K50S" >> release.txt
-        echo "- **Kernel**: Linux 6.6 (Rockchip ARMv8)" >> release.txt
-        echo "- **Hardware**: RK3568, 3x RTL8125BG 2.5G, 2x RTL8211FS SFP" >> release.txt
-        echo "- **Default IP**: 192.168.0.254 (Username: root, Password: password)" >> release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Organize files
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          cd openwrt/bin/targets/*/*
+          rm -rf packages
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Publish to GitHub Releases
-      uses: softprops/action-gh-release@v2
-      if: steps.organize.outputs.status == 'success' && steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@v4
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt_firmware_${{ env.SOURCE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      - name: Generate release tag
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        run: |
+          echo "release_tag=iStoreOS-K50S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          touch release.txt
+          echo "iStoreOS 24.10 for ROCEOS K50S RK3568" >> release.txt
+          echo "Default IP: 192.168.0.254" >> release.txt
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v1
+        if: steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
