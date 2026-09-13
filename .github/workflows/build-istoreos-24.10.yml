@@ -64,20 +64,25 @@ jobs:
         cd openwrt
         # 1. 确保目标架构补丁与源码目录存在
         mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
+        mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts
         mkdir -p target/linux/rockchip/dts/rockchip
         mkdir -p target/linux/rockchip/dts/rk3568
+        mkdir -p target/linux/rockchip/dts
 
-        # 从仓库 patches 拷贝清理好的 DTS/DTSI 到 OpenWrt 编译树
+        # 从仓库 patches 拷贝 DTS/DTSI 到 OpenWrt 编译树各级目录
         if [ -d "$GITHUB_WORKSPACE/patches" ]; then
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/
-          cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/
+          for dst in \
+            target/linux/rockchip/files/arch/arm64/boot/dts/rockchip \
+            target/linux/rockchip/files/arch/arm64/boot/dts \
+            target/linux/rockchip/dts/rockchip \
+            target/linux/rockchip/dts/rk3568 \
+            target/linux/rockchip/dts; do
+            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts "$dst/" 2>/dev/null || true
+            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi "$dst/" 2>/dev/null || true
+          done
         fi
 
-        # 2. 先加载仓库中的 k50s.config 到 .config
+        # 2. 加载仓库中的 k50s.config 到 .config
         if [ -f "$GITHUB_WORKSPACE/k50s.config" ]; then
           cp -f $GITHUB_WORKSPACE/k50s.config .config
         fi
@@ -106,9 +111,14 @@ jobs:
       run: |
         cd openwrt
         make target/linux/prepare -j$(nproc) || true
-        for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
+        for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts; do
           if [ -d "$dts_dir" ]; then
-            cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
+            mkdir -p "$dts_dir/rockchip"
+            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
+            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/rockchip/" 2>/dev/null || true
+            if [ -f "$dts_dir/rockchip/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/rockchip/Makefile"; then
+              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/rockchip/Makefile"
+            fi
             if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
               echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
             fi
@@ -119,18 +129,18 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        # 编译前再次确保 staging_dir 中的 U-Boot 存在（防止中间被 make clean/prepare 冲掉）
         mkdir -p staging_dir/target-aarch64_generic_musl/image
         [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
 
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || {
-          for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
+          for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts; do
             if [ -d "$dts_dir" ]; then
-              cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
+              mkdir -p "$dts_dir/rockchip"
+              cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
+              cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/rockchip/" 2>/dev/null || true
             fi
           done
-          # 单线程重新构建时也确保引导文件就绪
           mkdir -p staging_dir/target-aarch64_generic_musl/image
           [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
           make -j1 V=s
