@@ -62,7 +62,6 @@ jobs:
     - name: Inject ROCEOS K50S DTS & Device Configurations
       run: |
         cd openwrt
-        
         # 1. 确保目标架构补丁与源码目录存在
         mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
         mkdir -p target/linux/rockchip/dts/rockchip
@@ -83,8 +82,17 @@ jobs:
           cp -f $GITHUB_WORKSPACE/k50s.config .config
         fi
 
-        # 3. 再执行自定义拓展脚本 diy-part2.sh (确保 diy 脚本内的 sed 替换与分区扩容追加不会被覆盖)
+        # 3. 执行自定义拓展脚本 diy-part2.sh
         [ -e $GITHUB_WORKSPACE/diy-part2.sh ] && chmod +x $GITHUB_WORKSPACE/diy-part2.sh && $GITHUB_WORKSPACE/diy-part2.sh
+
+        # 4. 部署官方提取的 K50S U-Boot 引导文件至 staging image 目录供最终镜像打包
+        mkdir -p staging_dir/target-aarch64_generic_musl/image
+        if [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ]; then
+          cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
+          echo ">>> Successfully deployed k50s-rk3568-u-boot-rockchip.bin to staging image dir."
+        else
+          echo ">>> WARNING: k50s-rk3568-u-boot-rockchip.bin not found in repository root!"
+        fi
 
     - name: Download DL Packages
       run: |
@@ -111,6 +119,10 @@ jobs:
       id: compile
       run: |
         cd openwrt
+        # 编译前再次确保 staging_dir 中的 U-Boot 存在（防止中间被 make clean/prepare 冲掉）
+        mkdir -p staging_dir/target-aarch64_generic_musl/image
+        [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
+
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || {
           for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
@@ -118,6 +130,9 @@ jobs:
               cp -f target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/rk3568-roc-k50s.* "$dts_dir/"
             fi
           done
+          # 单线程重新构建时也确保引导文件就绪
+          mkdir -p staging_dir/target-aarch64_generic_musl/image
+          [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ] && cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
           make -j1 V=s
         }
         echo "status=success" >> $GITHUB_OUTPUT
