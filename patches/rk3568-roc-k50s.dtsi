@@ -4,7 +4,6 @@
  */
 
 /dts-v1/;
-
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/rockchip.h>
 #include <dt-bindings/pwm/pwm.h>
@@ -16,7 +15,6 @@
 	aliases {
 		mmc0 = &sdmmc0;
 		mmc1 = &sdhci;
-
 		led-boot = &led_green;
 		led-failsafe = &led_green;
 		led-running = &led_green;
@@ -178,6 +176,7 @@
 		regulator-ramp-delay = <2300>;
 		regulator-boot-on;
 		regulator-always-on;
+
 		regulator-state-mem {
 			regulator-off-in-suspend;
 		};
@@ -188,10 +187,8 @@
 		reg = <0x20>;
 		interrupt-parent = <&gpio0>;
 		interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
-
 		pinctrl-names = "default";
 		pinctrl-0 = <&pmic_int>;
-
 		rockchip,system-power-controller;
 		wakeup-source;
 		#clock-cells = <1>;
@@ -217,6 +214,7 @@
 				regulator-ramp-delay = <6001>;
 				regulator-initial-mode = <0x2>;
 				regulator-name = "vdd_logic";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -231,6 +229,7 @@
 				regulator-ramp-delay = <6001>;
 				regulator-initial-mode = <0x2>;
 				regulator-name = "vdd_gpu";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -241,6 +240,7 @@
 				regulator-boot-on;
 				regulator-initial-mode = <0x2>;
 				regulator-name = "vcc_ddr";
+
 				regulator-state-mem {
 					regulator-on-in-suspend;
 				};
@@ -255,6 +255,7 @@
 				regulator-ramp-delay = <6001>;
 				regulator-initial-mode = <0x2>;
 				regulator-name = "vdd_npu";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -266,6 +267,7 @@
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <900000>;
 				regulator-name = "vdda0v9_image";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -277,6 +279,7 @@
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <900000>;
 				regulator-name = "vdda_0v9";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -288,6 +291,7 @@
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <900000>;
 				regulator-name = "vdda0v9_pmu";
+
 				regulator-state-mem {
 					regulator-on-in-suspend;
 					regulator-suspend-microvolt = <900000>;
@@ -300,6 +304,7 @@
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-name = "vccio_acodec";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -311,6 +316,7 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-name = "vccio_sd";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -322,6 +328,7 @@
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-name = "vcc3v3_pmu";
+
 				regulator-state-mem {
 					regulator-on-in-suspend;
 					regulator-suspend-microvolt = <3300000>;
@@ -334,6 +341,7 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-name = "vcca_1v8";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -345,6 +353,7 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-name = "vcca1v8_pmu";
+
 				regulator-state-mem {
 					regulator-on-in-suspend;
 					regulator-suspend-microvolt = <1800000>;
@@ -357,6 +366,7 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-name = "vcca1v8_image";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -368,6 +378,7 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-name = "vcc_1v8";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -377,6 +388,7 @@
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-name = "vcc_3v3";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -386,6 +398,7 @@
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-name = "vcc3v3_sd";
+
 				regulator-state-mem {
 					regulator-off-in-suspend;
 				};
@@ -492,7 +505,7 @@
 };
 
 &pcie2x1 {
-	reset-gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_HIGH>;
+	reset-gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
@@ -503,13 +516,13 @@
 
 &pcie3x1 {
 	rockchip,bifurcation;
-	reset-gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_HIGH>;
+	reset-gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
 
 &pcie3x2 {
-	reset-gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_HIGH>;
+	reset-gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
