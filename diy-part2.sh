@@ -4,20 +4,24 @@
 # 1. 修改默认管理后台 IP 为原厂标牌的 192.168.0.254 (出厂账号: root, 密码: password)
 sed -i 's/192.168.1.1/192.168.0.254/g' package/base-files/files/bin/config_generate
 
-# 2. 注入 ROCEOS K50S DTS 与 DTSI 到编译树
+# 2. 注入 ROCEOS K50S DTS 与 DTSI 到编译树各层级目录（防止不同内核版本寻径失败）
 mkdir -p target/linux/rockchip/dts/rockchip
 mkdir -p target/linux/rockchip/dts/rk3568
-mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
+mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip
+mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts
 
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rockchip/ 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rockchip/ 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts target/linux/rockchip/dts/rk3568/ 2>/dev/null || true
-cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi target/linux/rockchip/dts/rk3568/ 2>/dev/null || true
+for dst in \
+  target/linux/rockchip/files/arch/arm64/boot/dts/rockchip \
+  target/linux/rockchip/files/arch/arm64/boot/dts \
+  target/linux/rockchip/dts/rockchip \
+  target/linux/rockchip/dts/rk3568 \
+  target/linux/rockchip/dts; do
+  cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dts "$dst/" 2>/dev/null || true
+  cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.dtsi "$dst/" 2>/dev/null || true
+done
 
 # 3. 在 target/linux/rockchip/image/armv8.mk 中注册 ROCEOS K50S 设备定义
-# 指定 UBOOT 为 k50s-rk3568，与我们提取的 k50s-rk3568-u-boot-rockchip.bin 严格对齐
+# DEVICE_DTS 必须带上厂商前缀 rockchip/，与 Linux 6.6 标准目录架构对齐
 if ! grep -q "define Device/roceos_k50s" target/linux/rockchip/image/armv8.mk; then
 cat << 'DEVICE_EOF' >> target/linux/rockchip/image/armv8.mk
 
@@ -26,7 +30,7 @@ define Device/roceos_k50s
   DEVICE_MODEL := K50S
   SOC := rk3568
   UBOOT := k50s-rk3568
-  DEVICE_DTS := rk3568-roc-k50s
+  DEVICE_DTS := rockchip/rk3568-roc-k50s
   SUPPORTED_DEVICES := roceos,k50s roceos,roc-k50s
   DEVICE_PACKAGES := kmod-r8125 kmod-r8169 kmod-nvme kmod-scsi-core kmod-ata-ahci kmod-brcmfmac brcmfmac-firmware-43455
 endef
