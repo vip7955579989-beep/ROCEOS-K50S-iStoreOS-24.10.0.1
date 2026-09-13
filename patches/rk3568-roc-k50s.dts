@@ -12,7 +12,7 @@
 
 / {
 	model = "ROCEOS K50S";
-	compatible = "roceos,roc-k50s", "rockchip,rk3568";
+	compatible = "roceos,k50s", "roceos,roc-k50s", "rockchip,rk3568";
 	is_testing = "1";
 	hwmodel_id = "K50S";
 	eth_driver = "r8125";
