@@ -2,9 +2,9 @@
 /*
  * Copyright (c) 2021 Rockchip Electronics Co., Ltd.
  * Copyright (c) 2024 ROCEOS K50S Team
+ * Based on ROCEOS K50S Official Schematic
  */
 
-/dts-v1/;
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/rockchip.h>
 #include <dt-bindings/leds/common.h>
@@ -19,41 +19,99 @@
 		ethernet1 = &gmac1;
 		mmc0 = &sdmmc0;
 		mmc1 = &sdhci;
+		led-boot = &led_green;
+		led-failsafe = &led_green;
+		led-running = &led_green;
+		led-upgrade = &led_green;
 	};
 
 	chosen: chosen {
 		stdout-path = "serial2:1500000n8";
 	};
 
-	vcc3v3_sys: vcc3v3-sys-regulator {
+	dc_12v: dc-12v {
 		compatible = "regulator-fixed";
-		regulator-name = "vcc3v3_sys";
+		regulator-name = "dc_12v";
 		regulator-always-on;
 		regulator-boot-on;
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
+		regulator-min-microvolt = <12000000>;
+		regulator-max-microvolt = <12000000>;
 	};
 
-	vcc5v0_sys: vcc5v0-sys-regulator {
+	vcc5v0_sys: vcc5v0-sys {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc5v0_sys";
 		regulator-always-on;
 		regulator-boot-on;
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
+		vin-supply = <&dc_12v>;
 	};
 
-	vcc3v3_pcie: vcc3v3-pcie-regulator {
+	vcc3v3_sys: vcc3v3-sys {
 		compatible = "regulator-fixed";
-		regulator-name = "vcc3v3_pcie";
-		enable-active-high;
-		gpio = <&gpio3 RK_PB7 GPIO_ACTIVE_HIGH>;
+		regulator-name = "vcc3v3_sys";
 		regulator-always-on;
 		regulator-boot-on;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		startup-delay-us = <5000>;
+		enable-active-high;
+		gpio = <&gpio0 RK_PB6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc3v3_sys_en>;
 		vin-supply = <&vcc5v0_sys>;
+	};
+
+	/* 3路 2.5G 网卡 3.3V 独立电源使能控制 (原理图 P1/P2/P3: LAN_PWREN_GPIO3_B7) */
+	vcc3v3_pcie: vcc3v3-pcie {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_pcie";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+		gpio = <&gpio3 RK_PB7 GPIO_ACTIVE_HIGH>;
+		regulator-always-on;
+		regulator-boot-on;
+		startup-delay-us = <10000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	vcc5v0_otg: vcc5v0-otg-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc5v0_otg";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-active-high;
+		gpio = <&gpio0 RK_PA5 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vcc5v0_sys>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc5v0_otg_en>;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&reset_button>;
+
+		button@1 {
+			label = "reset_button";
+			linux,code = <0x198>; /* KEY_RESTART */
+			gpios = <&gpio0 RK_PA0 GPIO_ACTIVE_LOW>;
+			linux,input-type = <1>;
+			debounce-interval = <60>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&led_green_en>;
+
+		led_green: green {
+			gpios = <&gpio2 RK_PD7 GPIO_ACTIVE_HIGH>;
+			label = "green:sys";
+			linux,default-trigger = "heartbeat";
+		};
 	};
 };
 
@@ -69,117 +127,50 @@
 	status = "okay";
 };
 
-&gmac0 {
-	phy-mode = "rgmii";
-	clock_in_out = "output";
-
-	snps,reset-gpio = <&gpio2 RK_PD3 GPIO_ACTIVE_LOW>;
-	snps,reset-active-low;
-	snps,reset-delays-us = <0 20000 100000>;
-
-	assigned-clocks = <&cru SCLK_GMAC0_RX_TX>, <&cru SCLK_GMAC0>;
-	assigned-clock-parents = <&cru SCLK_GMAC0_RGMII_SPEED>, <&cru CLK_MAC0_2TOP>;
-	assigned-clock-rates = <125000000>, <125000000>;
-
-	pinctrl-names = "default";
-	pinctrl-0 = <&gmac0_miim
-		     &gmac0_tx_bus2
-		     &gmac0_rx_bus2
-		     &gmac0_rgmii_clk
-		     &gmac0_rgmii_bus>;
-
-	tx_delay = <0x30>;
-	rx_delay = <0x10>;
-
-	phy-handle = <&rgmii_phy0>;
+&pcie30phy {
 	status = "okay";
 };
 
-&mdio0 {
-	rgmii_phy0: phy@0 {
-		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x0>;
-	};
-};
-
-&gmac1 {
-	phy-mode = "rgmii";
-	clock_in_out = "output";
-
-	snps,reset-gpio = <&gpio2 RK_PD5 GPIO_ACTIVE_LOW>;
-	snps,reset-active-low;
-	snps,reset-delays-us = <0 20000 100000>;
-
-	assigned-clocks = <&cru SCLK_GMAC1_RX_TX>, <&cru SCLK_GMAC1>;
-	assigned-clock-parents = <&cru SCLK_GMAC1_RGMII_SPEED>, <&cru CLK_MAC1_2TOP>;
-	assigned-clock-rates = <125000000>, <125000000>;
-
-	pinctrl-names = "default";
-	pinctrl-0 = <&gmac1_miim
-		     &gmac1_tx_bus2
-		     &gmac1_rx_bus2
-		     &gmac1_rgmii_clk
-		     &gmac1_rgmii_bus>;
-
-	tx_delay = <0x30>;
-	rx_delay = <0x10>;
-
-	phy-handle = <&rgmii_phy1>;
-	status = "okay";
-};
-
-&mdio1 {
-	rgmii_phy1: phy@1 {
-		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x1>;
-	};
-};
-
-/* 2.5G LAN0: PCIE20 (pcie2x1) */
+/* 2.5G LAN2: 原理图 Sheet 1, 接 PCIE20 控制器, PERST# = GPIO3_A5 */
 &pcie2x1 {
 	reset-gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
 
-/* 2.5G LAN1: PCIE30X1_1 (pcie3x1) */
+/* 2.5G LAN1: 原理图 Sheet 2, 接 PCIE30X1_1 控制器, PERST# = GPIO3_A4 */
 &pcie3x1 {
-	reset-gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
-	vpcie3v3-supply = <&vcc3v3_pcie>;
-	status = "okay";
-};
-
-/* 2.5G LAN2: PCIE30X1_2 (pcie3x2) */
-&pcie3x2 {
+	rockchip,bifurcation;
 	reset-gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
 
-&sdmmc0 {
-	bus-width = <4>;
-	cap-sd-highspeed;
-	cd-gpios = <&gpio0 RK_PA4 GPIO_ACTIVE_LOW>;
-	disable-wp;
-	pinctrl-names = "default";
-	pinctrl-0 = <&sdmmc0_bus4 &sdmmc0_clk &sdmmc0_cmd &sdmmc0_det>;
-	vmmc-supply = <&vcc3v3_sys>;
+/* 2.5G LAN0: 原理图 Sheet 3, 接 PCIE30X2 控制器, PERST# = GPIO3_A3 */
+&pcie3x2 {
+	compatible = "rockchip,rk3568-pcie", "snps,dw-pcie";
+	reset-gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
+	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
 
+/* eMMC 接口 */
 &sdhci {
 	bus-width = <8>;
 	max-frequency = <200000000>;
 	non-removable;
-	pinctrl-names = "default";
-	pinctrl-0 = <&emmc_bus8 &emmc_clk &emmc_cmd &emmc_datastrobe>;
 	status = "okay";
 };
 
-&uart2 {
+/* MicroSD 卡槽 */
+&sdmmc0 {
+	bus-width = <4>;
+	cap-sd-highspeed;
+	disable-wp;
 	status = "okay";
 };
 
+/* 板载 USB 3.0 控制器 (含 M.2 JMS583 桥接 NVMe 盘) */
 &usb_host0_ehci {
 	status = "okay";
 };
@@ -202,4 +193,30 @@
 
 &usb_host1_xhci {
 	status = "okay";
+};
+
+&pinctrl {
+	leds {
+		led_green_en: led-green-en {
+			rockchip,pins = <2 RK_PD7 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	keys {
+		reset_button: reset-button {
+			rockchip,pins = <0 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	usb {
+		vcc5v0_otg_en: vcc5v0-otg-en {
+			rockchip,pins = <0 RK_PA5 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	vcc {
+		vcc3v3_sys_en: vcc3v3-sys-en {
+			rockchip,pins = <0 RK_PB6 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
 };
