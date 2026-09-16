@@ -4,6 +4,49 @@
  * Copyright (c) 2024 ROCEOS K50S Team
  */
 
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include <dt-bindings/soc/rockchip,vop2.h>
+#include "rk3568.dtsi"
+
+/ {
+	aliases {
+		ethernet0 = &gmac0;
+		ethernet1 = &gmac1;
+		mmc0 = &sdhci;
+		mmc1 = &sdmmc0;
+	};
+
+	chosen: chosen {
+		stdout-path = "serial2:1500000n8";
+	};
+
+	vcc12v_dcin: vcc12v-dcin-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc12v_dcin";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <12000000>;
+		regulator-max-microvolt = <12000000>;
+	};
+
+	vcc3v3_sys: vcc3v3-sys-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "v需要修改的两个文件的完整替换代码如下：
+
+---
+
+### 1. `patches/rk3568-roc-k50s.dts`
+
+此版本去除了光口 PHY 的电平属性冲突，确保复位时序正常：
+
+```dts
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2021 Rockchip Electronics Co., Ltd.
+ * Copyright (c) 2024 ROCEOS K50S Team
+ */
+
 /dts-v1/;
 #include "rk3568-roc-k50s.dtsi"
 
@@ -17,7 +60,7 @@
 	};
 };
 
-/* ETH3: 对应面板上方 SFP 光口 / GMAC0 */
+/* ETH3: 面板上方 SFP 光口 (GMAC0) */
 &gmac0 {
 	phy-mode = "rgmii";
 	clock_in_out = "input";
@@ -51,7 +94,7 @@
 	};
 };
 
-/* ETH4: 对应面板下方 SFP 光口 / GMAC1 */
+/* ETH4: 面板下方 SFP 光口 (GMAC1) */
 &gmac1 {
 	phy-mode = "rgmii";
 	clock_in_out = "input";
