@@ -1,48 +1,30 @@
 #!/bin/bash
-# Description: OpenWrt / iStoreOS DIY script part 2 (Configuration modification)
+# =========================================================
+# ROCEOS K50S (RK3568) - iStoreOS / OpenWrt diy-part2.sh
+# =========================================================
 
-# 1. 统一管理后台 IP 为 192.168.0.254
-sed -i 's/192.168.100.1/192.168.0.254/g' package/base-files/files/bin/config_generate || true
-sed -i 's/192.168.1.1/192.168.0.254/g' package/base-files/files/bin/config_generate || true
-
-# 2. 设备树注入到 rockchip 专用目录
+# 1. 确保设备树（DTS）被多路径注入，防止内核构建阶段找不到 DTS
+mkdir -p target/linux/rockchip/dts/
 mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-cp -f patches/rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/ || true
-cp -f patches/rk3568-roc-k50s.dtsi target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/ || true
+mkdir -p target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/
 
-# 3. U-Boot 引导镜像注入到编译临时目录及输出目录
-mkdir -p staging_dir/target-aarch64_generic_musl/image/
-mkdir -p bin/targets/rockchip/armv8/
-if [ -f k50s-rk3568-u-boot-rockchip.bin ]; then
-    cp -f k50s-rk3568-u-boot-rockchip.bin staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-u-boot-rockchip.bin || true
-    cp -f k50s-rk3568-u-boot-rockchip.bin staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-u-boot.bin || true
-    cp -f k50s-rk3568-u-boot-rockchip.bin staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-boot.bin || true
-fi
+cp -f rk3568-roc-k50s.dts target/linux/rockchip/dts/
+cp -f rk3568-roc-k50s.dts target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
+cp -f rk3568-roc-k50s.dts target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/
 
-# 4. 修复缺失的 Makefile 打包宏并注册 Device/roceos_k50s 板型
-IMAGE_MAKEFILE="target/linux/rockchip/image/Makefile"
-ARMV8_MAKEFILE="target/linux/rockchip/image/armv8.mk"
+# 2. 清理 armv8.mk 中之前注入的旧定义，防止重复追加冲突
+sed -i '/define Device\/roceos_roc-k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
+sed -i '/TARGET_DEVICES += roceos_roc-k50s/d' target/linux/rockchip/image/armv8.mk
 
-# 兜底补齐 boot-combine 宏，防止部分版本抛错
-if [ -f "$IMAGE_MAKEFILE" ]; then
-    if ! grep -q "define Build/boot-combine" "$IMAGE_MAKEFILE"; then
-        sed -i '1i define Build/boot-combine\n\t@true\nendef\n' "$IMAGE_MAKEFILE"
-    fi
-fi
+# 3. 追加符合原生机制的设备定义（继承 Device/rk3568，不手动篡改打包流水线）
+cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
 
-# 在 armv8.mk 中注入 iStoreOS 24.10 原生设备打包定义
-if [ -f "$ARMV8_MAKEFILE" ]; then
-    sed -i '/define Device\/roceos_k50s/,/TARGET_DEVICES += roceos_k50s/d' "$ARMV8_MAKEFILE"
-    cat << 'EOF' >> "$ARMV8_MAKEFILE"
-define Device/roceos_k50s
+define Device/roceos_roc-k50s
+  $(Device/rk3568)
   DEVICE_VENDOR := ROCEOS
   DEVICE_MODEL := K50S
-  SOC := rk3568
-  DEVICE_DTS := rockchip/rk3568-roc-k50s
-  UBOOT_DEVICE_NAME := k50s-rk3568
-  IMAGE/sysupgrade.img.gz := boot-common | boot-script | gzip | append-metadata
-  DEVICE_PACKAGES := kmod-r8125 kmod-r8169 kmod-phy-realtek kmod-usb-storage kmod-usb-storage-uas
+  DEVICE_DTS := rk3568-roc-k50s
+  DEVICE_PACKAGES := kmod-r8169 kmod-r8125
 endef
-TARGET_DEVICES += roceos_k50s
+TARGET_DEVICES += roceos_roc-k50s
 EOF
-fi
