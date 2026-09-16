@@ -3,10 +3,10 @@
 # ROCEOS K50S (RK3568) - iStoreOS diy-part2.sh
 # =========================================================
 
-# 0. 自动定位上级目录/工作区根目录
+# 0. 自动定位工作区根目录
 BASE_DIR="${GITHUB_WORKSPACE:-..}"
 
-# 1. 确保设备树（DTS 和 DTSI）覆盖注入到所有内核检索路径
+# 1. 确保设备树被注入到所有内核检索路径
 mkdir -p target/linux/rockchip/dts/
 mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
 mkdir -p target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/
@@ -17,7 +17,7 @@ if [ -d "$BASE_DIR/patches" ]; then
   cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
 fi
 
-# 2. 注入 U-Boot 引导镜像（确保打包 sysupgrade 固件时正常生成引导分区）
+# 2. 注入 U-Boot 引导镜像
 mkdir -p staging_dir/target-aarch64_generic_musl/image/
 mkdir -p bin/targets/rockchip/armv8/
 
@@ -35,7 +35,7 @@ if [ -n "$UBOOT_BIN" ]; then
   cp -vf "$UBOOT_BIN" bin/targets/rockchip/armv8/k50s-rk3568-u-boot-rockchip.bin || true
 fi
 
-# 3. 清理旧设备定义（防止重复追加）
+# 3. 清理旧设备定义，避免重复追加
 sed -i '/define Device\/roceos_k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
 sed -i '/define Device\/roceos_roc-k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
 sed -i '/TARGET_DEVICES += roceos_k50s/d' target/linux/rockchip/image/armv8.mk
