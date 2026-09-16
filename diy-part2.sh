@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: OpenWrt DIY script part 2 (Configuration modification)
+# Description: OpenWrt / iStoreOS DIY script part 2 (Configuration modification)
 
 # 1. 统一管理后台 IP 为 192.168.0.254
 sed -i 's/192.168.100.1/192.168.0.254/g' package/base-files/files/bin/config_generate || true
@@ -19,30 +19,28 @@ if [ -f k50s-rk3568-u-boot-rockchip.bin ]; then
     cp -f k50s-rk3568-u-boot-rockchip.bin staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-boot.bin || true
 fi
 
-# 4. 修复 Missing Build/boot-combine 并注册正确的 Rockchip GPT 引导设备定义
+# 4. 修复缺失的 Makefile 打包宏并注册 Device/roceos_k50s 板型
 IMAGE_MAKEFILE="target/linux/rockchip/image/Makefile"
 ARMV8_MAKEFILE="target/linux/rockchip/image/armv8.mk"
 
-# 保留 boot-combine 容错宏
+# 兜底补齐 boot-combine 宏，防止部分版本抛错
 if [ -f "$IMAGE_MAKEFILE" ]; then
     if ! grep -q "define Build/boot-combine" "$IMAGE_MAKEFILE"; then
         sed -i '1i define Build/boot-combine\n\t@true\nendef\n' "$IMAGE_MAKEFILE"
     fi
 fi
 
-# 在 armv8.mk 中注入标准设备定义：改用 rockchip-gpt-img 宏
+# 在 armv8.mk 中注入 iStoreOS 24.10 原生设备打包定义
 if [ -f "$ARMV8_MAKEFILE" ]; then
     sed -i '/define Device\/roceos_k50s/,/TARGET_DEVICES += roceos_k50s/d' "$ARMV8_MAKEFILE"
-
     cat << 'EOF' >> "$ARMV8_MAKEFILE"
-
 define Device/roceos_k50s
   DEVICE_VENDOR := ROCEOS
   DEVICE_MODEL := K50S
   SOC := rk3568
   DEVICE_DTS := rockchip/rk3568-roc-k50s
   UBOOT_DEVICE_NAME := k50s-rk3568
-  IMAGE/sysupgrade.img.gz := boot-common | boot-script | rockchip-gpt-img | gzip | append-metadata
+  IMAGE/sysupgrade.img.gz := boot-common | boot-script | gzip | append-metadata
   DEVICE_PACKAGES := kmod-r8125 kmod-r8169 kmod-phy-realtek kmod-usb-storage kmod-usb-storage-uas
 endef
 TARGET_DEVICES += roceos_k50s
