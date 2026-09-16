@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 env:
-  REPO_URL: https://github.com/istoreos/istoreos.git
+  REPO_URL: https://github.com/istoreos/istoreos
   REPO_BRANCH: istoreos-24.10
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
@@ -19,159 +19,141 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@main
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune -a -f
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install -y $(curl -fsSL https://raw.githubusercontent.com/istoreos/istoreos/refs/heads/istoreos-24.10/scripts/init-env.sh | grep -o 'apt-get install [^;]*' | sed 's/apt-get install //g')
-        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
-          rsync subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev python3-setuptools libfuse-dev python3-pyelftools
-        pip3 install --no-cache-dir pyelftools
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y $(cat << 'EOF'
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib
+            g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev
+            libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs
+            msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools
+            python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo
+            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          EOF
+          )
+          sudo apt-get -qq autoremove --purge
+          sudo apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
 
-    - name: Clone source code
-      working-directory: /workdir
-      run: |
-        df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+      - name: Clone source code
+        working-directory: /workdir
+        run: |
+          df -h
+          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Load custom feeds
-      run: |
-        [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+      - name: Load custom feeds
+        run: |
+          [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x $DIY_P1_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
+      - name: Update feeds
+        run: cd openwrt && ./scripts/feeds update -a
 
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+      - name: Install feeds
+        run: cd openwrt && ./scripts/feeds install -a
 
-    - name: Load custom configuration
-      run: |
-        [ -e files ] && cp -r files openwrt/files
-        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
+      - name: Load custom configuration
+        run: |
+          [ -e files ] && cp -r files openwrt/files
+          [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
+          chmod +x $DIY_P2_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    - name: Download package
-      id: package
-      run: |
-        cd openwrt
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: Pre-build Kernel Prepare & Sync DTS
-      run: |
-        cd openwrt
-        mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-        cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-        
-        make target/linux/prepare -j$(nproc) || true
-        for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
-          if [ -d "$dts_dir" ]; then
-            cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
-            if [ -f "$dts_dir/Makefile" ] && ! grep -q "rk3568-roc-k50s.dtb" "$dts_dir/Makefile"; then
-              echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3568-roc-k50s.dtb" >> "$dts_dir/Makefile"
-            fi
-          fi
-        done
-
-    - name: Compile Firmware
-      id: compile
-      run: |
-        cd openwrt
-        mkdir -p staging_dir/target-aarch64_generic_musl/image bin/targets/rockchip/armv8
-        if [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ]; then
-          for name in k50s-rk3568-u-boot-rockchip.bin k50s-rk3568-u-boot.bin k50s-rk3568-boot.bin; do
-            cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" "staging_dir/target-aarch64_generic_musl/image/$name"
-            cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" "bin/targets/rockchip/armv8/$name"
-          done
-        fi
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || {
-          for dts_dir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-*/arch/arm64/boot/dts/rockchip; do
-            if [ -d "$dts_dir" ]; then
-              cp -f $GITHUB_WORKSPACE/patches/rk3568-roc-k50s.* "$dts_dir/" 2>/dev/null || true
-            fi
-          done
-          mkdir -p staging_dir/target-aarch64_generic_musl/image bin/targets/rockchip/armv8
+      - name: Pre-copy U-Boot binary
+        run: |
+          cd openwrt
+          mkdir -p staging_dir/target-aarch64_generic_musl/image/
+          mkdir -p bin/targets/rockchip/armv8/
           if [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ]; then
-            for name in k50s-rk3568-u-boot-rockchip.bin k50s-rk3568-u-boot.bin k50s-rk3568-boot.bin; do
-              cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" "staging_dir/target-aarch64_generic_musl/image/$name"
-              cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" "bin/targets/rockchip/armv8/$name"
-            done
+            cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
+            cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" bin/targets/rockchip/armv8/
           fi
-          make -j1 V=s
-        }
-        echo "status=success" >> $GITHUB_OUTPUT
-        SOURCE_DATE=$(date +%Y%m%d)
-        echo "SOURCE_DATE=$SOURCE_DATE" >> $GITHUB_ENV
 
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
+      - name: Download package
+        id: package
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
 
-    - name: Upload bin directory
-      uses: actions/upload-artifact@v4
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-      with:
-        name: OpenWrt_bin_${{ env.SOURCE_DATE }}
-        path: openwrt/bin
+      - name: Compile the firmware
+        id: compile
+        run: |
+          cd openwrt
+          echo "Unpacking linux kernel..."
+          make target/linux/compile -j$(nproc) || true
 
-    - name: Organize files
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+          echo "Force-inject DTS files into kernel source tree..."
+          for kdir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.*; do
+            if [ -d "$kdir/arch/arm64/boot/dts" ]; then
+              cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* "$kdir/arch/arm64/boot/dts/"
+              mkdir -p "$kdir/arch/arm64/boot/dts/rockchip"
+              cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* "$kdir/arch/arm64/boot/dts/rockchip/"
+            fi
+          done
 
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware_${{ env.SOURCE_DATE }}
-        path: ${{ env.FIRMWARE }}
+          echo -e "$(nproc) thread compile"
+          make -j$(nproc) || make -j1 V=s
+          echo "status=success" >> $GITHUB_OUTPUT
+          grep '^CONFIG_TARGET_DEVICE_.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-    - name: Generate release tag
-      id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      run: |
-        echo "release_tag=iStoreOS-K50S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-        echo "iStoreOS 24.10 for ROCEOS K50S RK3568" >> release.txt
-        echo "Default IP: 192.168.0.254" >> release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
+      - name: Check space usage
+        if: (!cancelled())
+        run: df -hT
 
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+      - name: Organize files
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          cd openwrt/bin/targets/*/*
+          rm -rf packages
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@main
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      - name: Generate release tag
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        run: |
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          touch release.txt
+          echo "ROCEOS K50S iStoreOS 固件编译产物" >> release.txt
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@master
+        if: steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
