@@ -2,116 +2,52 @@
 /*
  * Copyright (c) 2021 Rockchip Electronics Co., Ltd.
  * Copyright (c) 2024 ROCEOS K50S Team
- * Based on ROCEOS K50S Official Schematic
  */
 
+/dts-v1/;
+#include "rk3568.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/rockchip.h>
-#include <dt-bindings/leds/common.h>
-#include "rk3568.dtsi"
 
 / {
-	model = "ROCEOS K50S";
-	compatible = "roceos,rk3568-roc-k50s", "rockchip,rk3568";
-
 	aliases {
 		ethernet0 = &gmac0;
 		ethernet1 = &gmac1;
-		mmc0 = &sdmmc0;
-		mmc1 = &sdhci;
-		led-boot = &led_green;
-		led-failsafe = &led_green;
-		led-running = &led_green;
-		led-upgrade = &led_green;
+		mmc0 = &sdhci;
+		mmc1 = &sdmmc0;
 	};
 
-	chosen: chosen {
-		stdout-path = "serial2:1500000n8";
+	chosen {
+		bootargs = "earlycon=uart8250,mmio32,0xfe660000 console=ttyFIQ0 root=PARTUUID=614e0000-02 rootwait rw rootfstype=ext4";
 	};
 
-	dc_12v: dc-12v {
-		compatible = "regulator-fixed";
-		regulator-name = "dc_12v";
-		regulator-always-on;
-		regulator-boot-on;
-		regulator-min-microvolt = <12000000>;
-		regulator-max-microvolt = <12000000>;
-	};
-
-	vcc5v0_sys: vcc5v0-sys {
-		compatible = "regulator-fixed";
-		regulator-name = "vcc5v0_sys";
-		regulator-always-on;
-		regulator-boot-on;
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		vin-supply = <&dc_12v>;
-	};
-
-	vcc3v3_sys: vcc3v3-sys {
+	vcc3v3_sys: vcc3v3-sys-regulator {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc3v3_sys";
 		regulator-always-on;
 		regulator-boot-on;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		enable-active-high;
-		gpio = <&gpio0 RK_PB6 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&vcc3v3_sys_en>;
-		vin-supply = <&vcc5v0_sys>;
 	};
 
-	/* 3路 2.5G 网卡 3.3V 独立电源使能控制 (原理图 P1/P2/P3: LAN_PWREN_GPIO3_B7) */
-	vcc3v3_pcie: vcc3v3-pcie {
+	vcc5v0_sys: vcc5v0-sys-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc5v0_sys";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+	};
+
+	vcc3v3_pcie: vcc3v3-pcie-regulator {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc3v3_pcie";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 		enable-active-high;
 		gpio = <&gpio3 RK_PB7 GPIO_ACTIVE_HIGH>;
-		regulator-always-on;
 		regulator-boot-on;
-		startup-delay-us = <10000>;
-		vin-supply = <&vcc5v0_sys>;
-	};
-
-	vcc5v0_otg: vcc5v0-otg-regulator {
-		compatible = "regulator-fixed";
-		regulator-name = "vcc5v0_otg";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		enable-active-high;
-		gpio = <&gpio0 RK_PA5 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&vcc5v0_sys>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&vcc5v0_otg_en>;
-	};
-
-	gpio-keys {
-		compatible = "gpio-keys";
-		pinctrl-names = "default";
-		pinctrl-0 = <&reset_button>;
-
-		button@1 {
-			label = "reset_button";
-			linux,code = <0x198>; /* KEY_RESTART */
-			gpios = <&gpio0 RK_PA0 GPIO_ACTIVE_LOW>;
-			linux,input-type = <1>;
-			debounce-interval = <60>;
-		};
-	};
-
-	leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&led_green_en>;
-
-		led_green: green {
-			gpios = <&gpio2 RK_PD7 GPIO_ACTIVE_HIGH>;
-			label = "green:sys";
-			linux,default-trigger = "heartbeat";
-		};
+		regulator-always-on;
 	};
 };
 
@@ -127,96 +63,47 @@
 	status = "okay";
 };
 
-&pcie30phy {
+&sdhci {
+	bus-width = <8>;
+	max-frequency = <200000000>;
+	non-removable;
+	pinctrl-names = "default";
+	pinctrl-0 = <&emmc_bus8 &emmc_clk &emmc_cmd &emmc_datastrobe>;
 	status = "okay";
 };
 
-/* 2.5G LAN2: 原理图 Sheet 1, 接 PCIE20 控制器, PERST# = GPIO3_A5 */
-&pcie2x1 {
+&sdmmc0 {
+	bus-width = <4>;
+	cap-sd-highspeed;
+	cap-mmc-highspeed;
+	cd-gpios = <&gpio0 RK_PA4 GPIO_ACTIVE_LOW>;
+	disable-wp;
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdmmc0_bus4 &sdmmc0_clk &sdmmc0_cmd &sdmmc0_det>;
+	status = "okay";
+};
+
+&uart2 {
+	status = "okay";
+};
+
+/* ETH0: 板载 2.5G 电口 (RTL8125BG) */
+&pcie3x1 {
 	reset-gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
 
-/* 2.5G LAN1: 原理图 Sheet 2, 接 PCIE30X1_1 控制器, PERST# = GPIO3_A4 */
-&pcie3x1 {
-	rockchip,bifurcation;
+/* ETH1: 板载 2.5G 电口 (RTL8125BG) */
+&pcie2x1 {
 	reset-gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
 };
 
-/* 2.5G LAN0: 原理图 Sheet 3, 接 PCIE30X2 控制器, PERST# = GPIO3_A3 */
+/* ETH2: 板载 2.5G 电口 (RTL8125BG) */
 &pcie3x2 {
-	compatible = "rockchip,rk3568-pcie", "snps,dw-pcie";
 	reset-gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
 	vpcie3v3-supply = <&vcc3v3_pcie>;
 	status = "okay";
-};
-
-/* eMMC 接口 */
-&sdhci {
-	bus-width = <8>;
-	max-frequency = <200000000>;
-	non-removable;
-	status = "okay";
-};
-
-/* MicroSD 卡槽 */
-&sdmmc0 {
-	bus-width = <4>;
-	cap-sd-highspeed;
-	disable-wp;
-	status = "okay";
-};
-
-/* 板载 USB 3.0 控制器 (含 M.2 JMS583 桥接 NVMe 盘) */
-&usb_host0_ehci {
-	status = "okay";
-};
-
-&usb_host0_ohci {
-	status = "okay";
-};
-
-&usb_host0_xhci {
-	status = "okay";
-};
-
-&usb_host1_ehci {
-	status = "okay";
-};
-
-&usb_host1_ohci {
-	status = "okay";
-};
-
-&usb_host1_xhci {
-	status = "okay";
-};
-
-&pinctrl {
-	leds {
-		led_green_en: led-green-en {
-			rockchip,pins = <2 RK_PD7 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
-
-	keys {
-		reset_button: reset-button {
-			rockchip,pins = <0 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
-		};
-	};
-
-	usb {
-		vcc5v0_otg_en: vcc5v0-otg-en {
-			rockchip,pins = <0 RK_PA5 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
-
-	vcc {
-		vcc3v3_sys_en: vcc3v3-sys-en {
-			rockchip,pins = <0 RK_PB6 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
 };
