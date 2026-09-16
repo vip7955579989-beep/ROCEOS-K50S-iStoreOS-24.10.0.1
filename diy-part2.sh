@@ -3,34 +3,53 @@
 # ROCEOS K50S (RK3568) - iStoreOS diy-part2.sh
 # =========================================================
 
-# 1. 确保设备树（DTS 和 DTSI）覆盖注入到所有可能的直属与子目录路径
+# 0. 自动定位上级目录/工作区根目录
+BASE_DIR="${GITHUB_WORKSPACE:-..}"
+
+# 1. 确保设备树（DTS 和 DTSI）覆盖注入到所有内核检索路径
 mkdir -p target/linux/rockchip/dts/
-mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/
 mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-mkdir -p target/linux/rockchip/files-6.6/arch/arm64/boot/dts/
 mkdir -p target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/
 
-cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* target/linux/rockchip/dts/ 2>/dev/null || true
-cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* target/linux/rockchip/files/arch/arm64/boot/dts/
-cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
-cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* target/linux/rockchip/files-6.6/arch/arm64/boot/dts/
-cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/
+if [ -d "$BASE_DIR/patches" ]; then
+  cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/dts/ 2>/dev/null || true
+  cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
+  cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
+fi
 
-# 2. 清理旧设备定义（同时清理两种名字，防止冲突）
+# 2. 注入 U-Boot 引导镜像（确保打包 sysupgrade 固件时正常生成引导分区）
+mkdir -p staging_dir/target-aarch64_generic_musl/image/
+mkdir -p bin/targets/rockchip/armv8/
+
+UBOOT_BIN=""
+if [ -f "$BASE_DIR/k50s-rk3568-u-boot-rockchip.bin" ]; then
+  UBOOT_BIN="$BASE_DIR/k50s-rk3568-u-boot-rockchip.bin"
+elif [ -f "k50s-rk3568-u-boot-rockchip.bin" ]; then
+  UBOOT_BIN="k50s-rk3568-u-boot-rockchip.bin"
+fi
+
+if [ -n "$UBOOT_BIN" ]; then
+  echo "Injecting U-Boot from $UBOOT_BIN"
+  cp -vf "$UBOOT_BIN" staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-u-boot-rockchip.bin
+  cp -vf "$UBOOT_BIN" staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-u-boot.bin
+  cp -vf "$UBOOT_BIN" bin/targets/rockchip/armv8/k50s-rk3568-u-boot-rockchip.bin || true
+fi
+
+# 3. 清理旧设备定义（防止重复追加）
 sed -i '/define Device\/roceos_k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
 sed -i '/define Device\/roceos_roc-k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
 sed -i '/TARGET_DEVICES += roceos_k50s/d' target/linux/rockchip/image/armv8.mk
 sed -i '/TARGET_DEVICES += roceos_roc-k50s/d' target/linux/rockchip/image/armv8.mk
 
-# 3. 注入与 .config 完全一致的设备定义（继承 $(Device/rk3568)，名字对齐 roceos_k50s）
+# 4. 注入与 .config 严格对齐的设备定义
 cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
-
 define Device/roceos_k50s
   $(Device/rk3568)
   DEVICE_VENDOR := ROCEOS
   DEVICE_MODEL := K50S
-  DEVICE_DTS := rk3568-roc-k50s
-  DEVICE_PACKAGES := kmod-r8169 kmod-r8125
+  DEVICE_DTS := rockchip/rk3568-roc-k50s
+  UBOOT_DEVICE_NAME := k50s-rk3568
+  DEVICE_PACKAGES := kmod-r8125 kmod-r8169 kmod-phy-realtek kmod-usb-storage kmod-usb-storage-uas
 endef
 TARGET_DEVICES += roceos_k50s
 EOF
