@@ -1,159 +1,55 @@
-name: Build iStoreOS for ROCEOS K50S
+#!/bin/bash
+# =========================================================
+# ROCEOS K50S (RK3568) - iStoreOS diy-part2.sh
+# =========================================================
 
-on:
-  repository_dispatch:
-  workflow_dispatch:
+# 0. 自动定位上级目录/工作区根目录
+BASE_DIR="${GITHUB_WORKSPACE:-..}"
 
-env:
-  REPO_URL: https://github.com/istoreos/istoreos
-  REPO_BRANCH: istoreos-24.10
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: .config
-  DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
-  TZ: Asia/Shanghai
+# 1. 确保设备树（DTS 和 DTSI）覆盖注入到所有内核检索路径
+mkdir -p target/linux/rockchip/dts/
+mkdir -p target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/
+mkdir -p target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/
 
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+if [ -d "$BASE_DIR/patches" ]; then
+  cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/dts/ 2>/dev/null || true
+  cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/files/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
+  cp -f "$BASE_DIR/patches/rk3568-roc-k50s".* target/linux/rockchip/files-6.6/arch/arm64/boot/dts/rockchip/ 2>/dev/null || true
+fi
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@main
+# 2. 注入 U-Boot 引导镜像（确保打包 sysupgrade 固件时正常生成引导分区）
+mkdir -p staging_dir/target-aarch64_generic_musl/image/
+mkdir -p bin/targets/rockchip/armv8/
 
-      - name: Initialization environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo apt-get -qq update
-          sudo apt-get -qq install -y $(cat << 'EOF'
-            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential
-            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib
-            g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev
-            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev
-            libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs
-            msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools
-            python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo
-            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-          EOF
-          )
-          sudo apt-get -qq autoremove --purge
-          sudo apt-get -qq clean
-          sudo timedatectl set-timezone "$TZ"
-          sudo mkdir -p /workdir
-          sudo chown $USER:$GROUPS /workdir
+UBOOT_BIN=""
+if [ -f "$BASE_DIR/k50s-rk3568-u-boot-rockchip.bin" ]; then
+  UBOOT_BIN="$BASE_DIR/k50s-rk3568-u-boot-rockchip.bin"
+elif [ -f "k50s-rk3568-u-boot-rockchip.bin" ]; then
+  UBOOT_BIN="k50s-rk3568-u-boot-rockchip.bin"
+fi
 
-      - name: Clone source code
-        working-directory: /workdir
-        run: |
-          df -h
-          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+if [ -n "$UBOOT_BIN" ]; then
+  echo "Injecting U-Boot from $UBOOT_BIN"
+  cp -vf "$UBOOT_BIN" staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-u-boot-rockchip.bin
+  cp -vf "$UBOOT_BIN" staging_dir/target-aarch64_generic_musl/image/k50s-rk3568-u-boot.bin
+  cp -vf "$UBOOT_BIN" bin/targets/rockchip/armv8/k50s-rk3568-u-boot-rockchip.bin || true
+fi
 
-      - name: Load custom feeds
-        run: |
-          [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
-          chmod +x $DIY_P1_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
+# 3. 清理旧设备定义（防止重复追加）
+sed -i '/define Device\/roceos_k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
+sed -i '/define Device\/roceos_roc-k50s/,/endef/d' target/linux/rockchip/image/armv8.mk
+sed -i '/TARGET_DEVICES += roceos_k50s/d' target/linux/rockchip/image/armv8.mk
+sed -i '/TARGET_DEVICES += roceos_roc-k50s/d' target/linux/rockchip/image/armv8.mk
 
-      - name: Update feeds
-        run: cd openwrt && ./scripts/feeds update -a
-
-      - name: Install feeds
-        run: cd openwrt && ./scripts/feeds install -a
-
-      - name: Load custom configuration
-        run: |
-          [ -e files ] && cp -r files openwrt/files
-          [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
-          chmod +x $DIY_P2_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
-
-      - name: Pre-copy U-Boot binary
-        run: |
-          cd openwrt
-          mkdir -p staging_dir/target-aarch64_generic_musl/image/
-          mkdir -p bin/targets/rockchip/armv8/
-          if [ -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" ]; then
-            cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" staging_dir/target-aarch64_generic_musl/image/
-            cp -f "$GITHUB_WORKSPACE/k50s-rk3568-u-boot-rockchip.bin" bin/targets/rockchip/armv8/
-          fi
-
-      - name: Download package
-        id: package
-        run: |
-          cd openwrt
-          make defconfig
-          make download -j8
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
-
-      - name: Compile the firmware
-        id: compile
-        run: |
-          cd openwrt
-          echo "Unpacking linux kernel..."
-          make target/linux/compile -j$(nproc) || true
-
-          echo "Force-inject DTS files into kernel source tree..."
-          for kdir in build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.*; do
-            if [ -d "$kdir/arch/arm64/boot/dts" ]; then
-              cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* "$kdir/arch/arm64/boot/dts/"
-              mkdir -p "$kdir/arch/arm64/boot/dts/rockchip"
-              cp -f "$GITHUB_WORKSPACE/patches/rk3568-roc-k50s".* "$kdir/arch/arm64/boot/dts/rockchip/"
-            fi
-          done
-
-          echo -e "$(nproc) thread compile"
-          make -j$(nproc) || make -j1 V=s
-          echo "status=success" >> $GITHUB_OUTPUT
-          grep '^CONFIG_TARGET_DEVICE_.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
-      - name: Check space usage
-        if: (!cancelled())
-        run: df -hT
-
-      - name: Organize files
-        id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
-        run: |
-          cd openwrt/bin/targets/*/*
-          rm -rf packages
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Upload firmware directory
-        uses: actions/upload-artifact@main
-        if: steps.organize.outputs.status == 'success' && !cancelled()
-        with:
-          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE }}
-
-      - name: Generate release tag
-        id: tag
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-        run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-          touch release.txt
-          echo "ROCEOS K50S iStoreOS 固件编译产物" >> release.txt
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Upload firmware to release
-        uses: softprops/action-gh-release@master
-        if: steps.tag.outputs.status == 'success' && !cancelled()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.tag.outputs.release_tag }}
-          body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
+# 4. 注入与 .config 严格对齐的设备定义
+cat << 'EOF' >> target/linux/rockchip/image/armv8.mk
+define Device/roceos_k50s
+  $(Device/rk3568)
+  DEVICE_VENDOR := ROCEOS
+  DEVICE_MODEL := K50S
+  DEVICE_DTS := rockchip/rk3568-roc-k50s
+  UBOOT_DEVICE_NAME := k50s-rk3568
+  DEVICE_PACKAGES := kmod-r8125 kmod-r8169 kmod-phy-realtek kmod-usb-storage kmod-usb-storage-uas
+endef
+TARGET_DEVICES += roceos_k50s
+EOF
